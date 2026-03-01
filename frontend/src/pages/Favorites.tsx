@@ -65,6 +65,16 @@ export default function Favorites() {
                     {fav.listing.floor === 0 ? "RDC" : `${fav.listing.floor}e ét.`}
                   </span>
                 )}
+                {fav.listing.rooms != null && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700">
+                    {fav.listing.rooms} p.
+                  </span>
+                )}
+                {fav.listing.bedrooms != null && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-100 text-teal-700">
+                    {fav.listing.bedrooms} ch.
+                  </span>
+                )}
               </div>
               <h3 className="font-medium text-gray-900 text-sm truncate">{fav.listing.title}</h3>
               <div className="flex gap-2 text-xs text-gray-500 mt-1">

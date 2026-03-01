@@ -104,6 +104,16 @@ export default function Archives() {
                     {item.listing.floor === 0 ? "RDC" : `${item.listing.floor}e ét.`}
                   </span>
                 )}
+                {item.listing.rooms != null && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700">
+                    {item.listing.rooms} p.
+                  </span>
+                )}
+                {item.listing.bedrooms != null && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-100 text-teal-700">
+                    {item.listing.bedrooms} ch.
+                  </span>
+                )}
               </div>
               <h3 className="font-medium text-gray-900 text-sm truncate">
                 {item.listing.title}
