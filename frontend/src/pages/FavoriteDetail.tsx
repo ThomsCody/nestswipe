@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import client from "@/api/client";
@@ -18,13 +18,122 @@ interface FavoriteDetailData {
   created_at: string;
 }
 
+function Lightbox({
+  photos,
+  index,
+  onClose,
+  onChangeIndex,
+}: {
+  photos: Listing["photos"];
+  index: number;
+  onClose: () => void;
+  onChangeIndex: (i: number) => void;
+}) {
+  const touchStartX = useRef<number | null>(null);
+
+  const goPrev = useCallback(() => {
+    onChangeIndex((index - 1 + photos.length) % photos.length);
+  }, [index, photos.length, onChangeIndex]);
+
+  const goNext = useCallback(() => {
+    onChangeIndex((index + 1) % photos.length);
+  }, [index, photos.length, onChangeIndex]);
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowLeft") goPrev();
+      else if (e.key === "ArrowRight") goNext();
+    };
+    window.addEventListener("keydown", handleKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", handleKey);
+      document.body.style.overflow = "";
+    };
+  }, [onClose, goPrev, goNext]);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0]!.clientX;
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const dx = e.changedTouches[0]!.clientX - touchStartX.current;
+    if (Math.abs(dx) > 50) {
+      dx < 0 ? goNext() : goPrev();
+    }
+    touchStartX.current = null;
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
+      onClick={onClose}
+    >
+      {/* Close button */}
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 text-white/70 hover:text-white z-10"
+      >
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+
+      {/* Counter */}
+      <span className="absolute top-4 left-4 text-white/70 text-sm">
+        {index + 1} / {photos.length}
+      </span>
+
+      {/* Prev arrow */}
+      {photos.length > 1 && (
+        <button
+          onClick={(e) => { e.stopPropagation(); goPrev(); }}
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white p-2"
+        >
+          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+      )}
+
+      {/* Image */}
+      <img
+        src={photoUrl(photos[index]!.s3_key)}
+        alt=""
+        className="max-h-[90vh] max-w-[90vw] object-contain select-none"
+        onClick={(e) => e.stopPropagation()}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+        draggable={false}
+      />
+
+      {/* Next arrow */}
+      {photos.length > 1 && (
+        <button
+          onClick={(e) => { e.stopPropagation(); goNext(); }}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white p-2"
+        >
+          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Gallery({ photos }: { photos: Listing["photos"] }) {
   const [selected, setSelected] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   if (!photos.length) return null;
 
   return (
     <div>
-      <div className="h-72 bg-gray-900 rounded-lg overflow-hidden mb-2">
+      <div
+        className="h-72 bg-gray-900 rounded-lg overflow-hidden mb-2 cursor-pointer"
+        onClick={() => setLightboxOpen(true)}
+      >
         <img
           src={photoUrl(photos[selected]!.s3_key)}
           alt=""
@@ -49,6 +158,14 @@ function Gallery({ photos }: { photos: Listing["photos"] }) {
             </button>
           ))}
         </div>
+      )}
+      {lightboxOpen && (
+        <Lightbox
+          photos={photos}
+          index={selected}
+          onClose={() => setLightboxOpen(false)}
+          onChangeIndex={setSelected}
+        />
       )}
     </div>
   );
