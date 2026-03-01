@@ -41,11 +41,15 @@ async def get_archives(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Exclude listings already in household favorites
+    fav_subq = select(Favorite.listing_id).where(Favorite.household_id == user.household_id).subquery()
+
     base_query = (
         select(SwipeAction)
         .where(SwipeAction.user_id == user.id, SwipeAction.action == SwipeDirection.pass_)
         .join(Listing, SwipeAction.listing_id == Listing.id)
         .where(Listing.household_id == user.household_id)
+        .where(SwipeAction.listing_id.notin_(select(fav_subq)))
     )
 
     count_result = await db.execute(select(func.count()).select_from(base_query.subquery()))

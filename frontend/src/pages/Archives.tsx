@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useCallback } from "react";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import client from "@/api/client";
 import { photoUrl } from "@/api/photos";
 import type { Listing } from "@/types";
@@ -13,13 +14,42 @@ interface ArchivesData {
   total: number;
 }
 
+const PER_PAGE = 8;
+
 export default function Archives() {
   const queryClient = useQueryClient();
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
-  const { data, isLoading } = useQuery<ArchivesData>({
-    queryKey: ["archives"],
-    queryFn: () => client.get("/archives").then((r) => r.data),
-  });
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useInfiniteQuery<ArchivesData>({
+      queryKey: ["archives"],
+      queryFn: ({ pageParam }) =>
+        client
+          .get("/archives", { params: { page: pageParam, per_page: PER_PAGE } })
+          .then((r) => r.data),
+      initialPageParam: 1,
+      getNextPageParam: (lastPage, allPages) => {
+        const loaded = allPages.reduce((n, p) => n + p.archives.length, 0);
+        return loaded < lastPage.total ? allPages.length + 1 : undefined;
+      },
+    });
+
+  const handleIntersect = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+        fetchNextPage();
+      }
+    },
+    [fetchNextPage, hasNextPage, isFetchingNextPage],
+  );
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(handleIntersect, { rootMargin: "200px" });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [handleIntersect]);
 
   const restore = useMutation({
     mutationFn: (listingId: number) =>
@@ -30,9 +60,12 @@ export default function Archives() {
     },
   });
 
+  const allItems = data?.pages.flatMap((p) => p.archives) ?? [];
+  const total = data?.pages[0]?.total ?? 0;
+
   if (isLoading) return <p className="text-gray-500">Loading...</p>;
 
-  if (!data?.archives.length) {
+  if (!allItems.length) {
     return (
       <div>
         <h2 className="text-xl font-semibold text-gray-900 mb-4">Archives</h2>
@@ -44,10 +77,10 @@ export default function Archives() {
   return (
     <div>
       <h2 className="text-xl font-semibold text-gray-900 mb-4">
-        Archives ({data.total})
+        Archives ({total})
       </h2>
       <div className="grid gap-4 sm:grid-cols-2">
-        {data.archives.map((item) => (
+        {allItems.map((item) => (
           <div
             key={item.listing.id}
             className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden"
@@ -102,14 +135,22 @@ export default function Archives() {
                 <button
                   onClick={() => restore.mutate(item.listing.id)}
                   disabled={restore.isPending}
-                  className="text-xs font-medium px-2.5 py-1 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors disabled:opacity-50"
+                  className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded bg-pink-50 text-pink-600 hover:bg-pink-100 transition-colors disabled:opacity-50"
                 >
-                  Restore
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                  </svg>
+                  Add to favorites
                 </button>
               </div>
             </div>
           </div>
         ))}
+      </div>
+      <div ref={sentinelRef} className="h-10 flex items-center justify-center">
+        {isFetchingNextPage && (
+          <p className="text-sm text-gray-400">Loading more...</p>
+        )}
       </div>
     </div>
   );
