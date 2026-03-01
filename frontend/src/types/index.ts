@@ -15,6 +15,8 @@ export interface Listing {
   sqm?: number;
   price_per_sqm?: number;
   bedrooms?: number;
+  rooms?: number;
+  floor?: number;
   city?: string;
   district?: string;
   location_detail?: string;

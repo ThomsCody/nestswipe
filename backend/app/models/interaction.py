@@ -23,6 +23,8 @@ class SwipeAction(Base):
     action: Mapped[SwipeDirection] = mapped_column(Enum(SwipeDirection, values_callable=lambda e: [x.value for x in e]))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    listing: Mapped["Listing"] = relationship()  # noqa: F821
+
 
 class Favorite(Base):
     __tablename__ = "favorites"

@@ -21,6 +21,7 @@ STRIP_PARAMS = {
 # Known CDN domains for property photos
 SELOGER_PHOTO_CDNS = ["mms.seloger.com"]
 PAP_PHOTO_CDNS = ["cdn.pap.fr/photos"]
+CI_PHOTO_CDNS = ["media.apimo.pro/cache"]
 
 # Patterns to exclude (logos, icons, tracking pixels, etc.)
 EXCLUDE_PATTERNS = [
@@ -95,7 +96,11 @@ def _is_valid_photo(url: str, source: str) -> bool:
     if any(p in lower for p in EXCLUDE_PATTERNS):
         return False
     # Must be from a known CDN for the source
-    cdns = SELOGER_PHOTO_CDNS if source == "seloger" else PAP_PHOTO_CDNS
+    cdns = {
+        "seloger": SELOGER_PHOTO_CDNS,
+        "pap": PAP_PHOTO_CDNS,
+        "consultantsimmobilier": CI_PHOTO_CDNS,
+    }.get(source, [])
     if not any(cdn in lower for cdn in cdns):
         return False
     return True
@@ -107,6 +112,8 @@ def _normalize_photo_url(url: str) -> str:
     url = re.sub(r"[&?]w=\d+", "", url)
     url = re.sub(r"&&+", "&", url)
     url = re.sub(r"[&?]$", "", url)
+    # Apimo: prefer -original over -medium/-big variants
+    url = re.sub(r"-(?:medium|big)\.(jpe?g|png|webp)", r"-original.\1", url)
     return url
 
 

@@ -6,6 +6,7 @@ import client from "@/api/client";
 const NAV_ITEMS = [
   { to: "/swipe", label: "Swipe" },
   { to: "/favorites", label: "Favorites" },
+  { to: "/archives", label: "Archives" },
   { to: "/settings", label: "Settings" },
 ];
 

@@ -25,15 +25,20 @@ async def get_queue(
     # Only show listings that have at least one photo
     has_photos_subq = select(ListingPhoto.listing_id).distinct().subquery()
 
+    # Exclude listings already in household favorites
+    fav_subq = select(Favorite.listing_id).where(Favorite.household_id == user.household_id).subquery()
+
     # Get unseen listings for this household
+    queue_filters = [
+        Listing.household_id == user.household_id,
+        Listing.id.notin_(select(swiped_subq)),
+        Listing.id.notin_(select(fav_subq)),
+        Listing.id.in_(select(has_photos_subq)),
+    ]
     query = (
         select(Listing)
         .options(selectinload(Listing.photos))
-        .where(
-            Listing.household_id == user.household_id,
-            Listing.id.notin_(select(swiped_subq)),
-            Listing.id.in_(select(has_photos_subq)),
-        )
+        .where(*queue_filters)
         .order_by(Listing.first_seen_at.desc())
         .limit(limit)
     )
@@ -41,11 +46,7 @@ async def get_queue(
     listings = result.scalars().unique().all()
 
     # Count remaining
-    count_query = select(func.count(Listing.id)).where(
-        Listing.household_id == user.household_id,
-        Listing.id.notin_(select(swiped_subq)),
-        Listing.id.in_(select(has_photos_subq)),
-    )
+    count_query = select(func.count(Listing.id)).where(*queue_filters)
     count_result = await db.execute(count_query)
     remaining = count_result.scalar() or 0
 
@@ -60,6 +61,8 @@ async def get_queue(
                 sqm=l.sqm,
                 price_per_sqm=l.price_per_sqm,
                 bedrooms=l.bedrooms,
+                rooms=l.rooms,
+                floor=l.floor,
                 city=l.city,
                 district=l.district,
                 location_detail=l.location_detail,

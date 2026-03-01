@@ -18,6 +18,8 @@ class ListingResponse(BaseModel):
     sqm: float | None
     price_per_sqm: float | None
     bedrooms: int | None
+    rooms: int | None = None
+    floor: int | None = None
     city: str | None
     district: str | None
     location_detail: str | None
@@ -34,3 +36,13 @@ class QueueResponse(BaseModel):
 
 class SwipeRequest(BaseModel):
     action: str  # "like" or "pass"
+
+
+class ArchiveListItem(BaseModel):
+    listing: ListingResponse
+    passed_at: str
+
+
+class ArchivesListResponse(BaseModel):
+    archives: list[ArchiveListItem]
+    total: int

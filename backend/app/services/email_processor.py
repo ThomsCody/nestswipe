@@ -1,8 +1,10 @@
 import asyncio
 import base64
 import logging
+import re
 from datetime import datetime, timezone
 
+from bs4 import BeautifulSoup
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -29,6 +31,7 @@ logger = logging.getLogger(__name__)
 SOURCES = {
     "seloger.com": "seloger",
     "pap.fr": "pap",
+    "consultantsimmobilier.com": "consultantsimmobilier",
 }
 
 
@@ -62,6 +65,28 @@ def _detect_source(from_header: str) -> str:
         if domain in from_lower:
             return name
     return "unknown"
+
+
+def _split_consultantsimmobilier(html: str) -> list[tuple[str, str]]:
+    """Split a consultantsimmobilier email into per-listing (html_fragment, url) tuples.
+
+    Each listing lives in a <table data-module="module-3"> block containing
+    an ap.immo link and a photo from media.apimo.pro.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    listings: list[tuple[str, str]] = []
+    for table in soup.find_all("table", attrs={"data-module": "module-3"}):
+        link = table.find("a", href=re.compile(r"https://ap\.immo/p/\d+"))
+        if not link:
+            continue
+        listings.append((str(table), link["href"]))
+    return listings
+
+
+def _extract_ci_source_id(url: str) -> str | None:
+    """Extract the numeric listing ID from an ap.immo/p/{id} URL."""
+    match = re.search(r"ap\.immo/p/(\d+)", url)
+    return match.group(1) if match else None
 
 
 def _extract_html_body(payload: dict) -> str:
@@ -127,126 +152,154 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
 
             logger.info("Processing email from %s (msg %s, %d chars)", source, msg_meta["id"], len(html_body))
 
-            extracted = await extract_listing(user.openai_api_key, html_body, source)
-            if not extracted or not extracted.is_listing or not extracted.title:
-                logger.info("Email %s: not a listing or extraction failed", msg_meta["id"])
-                continue
-
-            logger.info("Extracted: %s — %s, %s€, %sm²", extracted.title, extracted.city, extracted.price, extracted.sqm)
-
-            # Resolve tracking URL and scrape photos from the listing page
-            scraped = None
-            if extracted.external_url:
-                scraped = await scrape_listing(extracted.external_url, source)
-                if scraped.resolved_url:
-                    logger.info("Resolved URL: %s -> %s", extracted.external_url, scraped.resolved_url)
-                    extracted.external_url = scraped.resolved_url
-                if scraped.source_id:
-                    extracted.source_id = scraped.source_id
-
-            # Compute price_per_sqm
-            price_per_sqm = None
-            if extracted.price and extracted.sqm and extracted.sqm > 0:
-                price_per_sqm = round(extracted.price / extracted.sqm, 2)
-
-            fingerprint = compute_fingerprint(
-                source, extracted.city, extracted.district,
-                extracted.sqm, extracted.bedrooms, extracted.price,
-            )
-
-            # Photo fallback chain: listing page → email HTML → LLM extraction
-            page_photos = scraped.photo_urls if scraped and scraped.photo_urls else []
-            email_photos = extract_photos_from_html(html_body, source)
-            llm_photos = extracted.photo_urls or []
-
-            if page_photos:
-                photo_urls = page_photos
-                logger.info("Using %d photos from listing page", len(photo_urls))
-            elif email_photos:
-                photo_urls = email_photos
-                logger.info("Falling back to %d photos from email HTML", len(photo_urls))
+            # Consultantsimmobilier emails can contain multiple listings
+            if source == "consultantsimmobilier":
+                fragments = _split_consultantsimmobilier(html_body)
+                if not fragments:
+                    logger.info("Email %s: no listing blocks found", msg_meta["id"])
+                    continue
+                logger.info("Email %s: found %d listing(s)", msg_meta["id"], len(fragments))
             else:
-                photo_urls = llm_photos
-                logger.info("Falling back to %d photos from LLM extraction", len(photo_urls))
+                # Other sources: one listing per email, no pre-extracted URL
+                fragments = [(html_body, None)]
 
-            # Download photos and compute phashes
-            photo_data: list[tuple[bytes, str | None, str]] = []
-            photo_phashes: list[str] = []
-            for url in photo_urls[:15]:
-                img_bytes = await download_photo(url)
-                if img_bytes:
-                    phash = compute_phash(img_bytes)
-                    photo_data.append((img_bytes, phash, url))
-                    if phash:
-                        photo_phashes.append(phash)
+            for fragment_html, fragment_url in fragments:
+                extracted = await extract_listing(user.openai_api_key, fragment_html, source)
+                if not extracted or not extracted.is_listing or not extracted.title:
+                    logger.info("Email %s: not a listing or extraction failed", msg_meta["id"])
+                    continue
 
-            # Filter out non-property photos (agency logos, agent portraits, etc.)
-            if photo_data:
-                photo_data = await classify_photos(user.openai_api_key, photo_data)
-                photo_phashes = [phash for _, phash, _ in photo_data if phash]
+                logger.info("Extracted: %s — %s, %s€, %sm²", extracted.title, extracted.city, extracted.price, extracted.sqm)
 
-            # Skip listings with no photos
-            if not photo_data:
-                logger.info("Email %s: skipping listing with no usable photos", msg_meta["id"])
-                continue
+                # URL resolution and photo scraping
+                scraped = None
+                if source == "consultantsimmobilier" and fragment_url:
+                    # Keep the original ap.immo URL with auth params (u, p)
+                    # so the user can open it without logging in.
+                    extracted.external_url = fragment_url
+                    extracted.source_id = _extract_ci_source_id(fragment_url)
+                    # Still scrape the page for photos (the auth URL returns 200)
+                    scraped = await scrape_listing(fragment_url, source)
+                elif extracted.external_url:
+                    scraped = await scrape_listing(extracted.external_url, source)
+                    if scraped.resolved_url:
+                        logger.info("Resolved URL: %s -> %s", extracted.external_url, scraped.resolved_url)
+                        extracted.external_url = scraped.resolved_url
+                    if scraped.source_id:
+                        extracted.source_id = scraped.source_id
 
-            # Check for duplicates
-            existing = await find_duplicate(
-                db, user.household_id, source,
-                extracted.source_id, extracted.external_url,
-                fingerprint, photo_phashes,
-            )
+                # Compute price_per_sqm
+                price_per_sqm = None
+                if extracted.price and extracted.sqm and extracted.sqm > 0:
+                    price_per_sqm = round(extracted.price / extracted.sqm, 2)
 
-            now = datetime.now(timezone.utc)
-
-            if existing:
-                logger.info("Duplicate found (listing %d), updating", existing.id)
-                existing.last_seen_at = now
-                if extracted.price and extracted.price != existing.price:
-                    db.add(PriceHistory(listing_id=existing.id, price=extracted.price))
-                    existing.price = extracted.price
-                    if existing.sqm and existing.sqm > 0:
-                        existing.price_per_sqm = round(extracted.price / existing.sqm, 2)
-            else:
-                listing = Listing(
-                    household_id=user.household_id,
-                    source=source,
-                    source_id=extracted.source_id,
-                    external_url=extracted.external_url,
-                    title=extracted.title,
-                    description=extracted.description,
-                    price=extracted.price,
-                    sqm=extracted.sqm,
-                    price_per_sqm=price_per_sqm,
-                    bedrooms=extracted.bedrooms,
-                    city=extracted.city,
-                    district=extracted.district,
-                    location_detail=extracted.location_detail,
-                    fingerprint=fingerprint,
+                fingerprint = compute_fingerprint(
+                    source, extracted.city, extracted.district,
+                    extracted.sqm, extracted.bedrooms, extracted.price,
                 )
-                db.add(listing)
-                await db.flush()
 
-                # Initial price history
-                if extracted.price:
-                    db.add(PriceHistory(listing_id=listing.id, price=extracted.price))
+                # Photo fallback chain: listing page → email HTML → LLM extraction
+                page_photos = scraped.photo_urls if scraped and scraped.photo_urls else []
+                email_photos = extract_photos_from_html(fragment_html, source)
+                llm_photos = extracted.photo_urls or []
 
-                # Upload photos
-                for i, (img_bytes, phash, original_url) in enumerate(photo_data):
-                    s3_key = upload_photo(minio_client, img_bytes)
-                    db.add(ListingPhoto(
-                        listing_id=listing.id,
-                        s3_key=s3_key,
-                        original_url=original_url,
-                        phash=phash,
-                        position=i,
-                    ))
+                if page_photos:
+                    photo_urls = page_photos
+                    logger.info("Using %d photos from listing page", len(photo_urls))
+                elif email_photos:
+                    photo_urls = email_photos
+                    logger.info("Falling back to %d photos from email HTML", len(photo_urls))
+                else:
+                    photo_urls = llm_photos
+                    logger.info("Falling back to %d photos from LLM extraction", len(photo_urls))
 
-                logger.info("Created new listing %d: %s", listing.id, listing.title)
+                # Download photos and compute phashes
+                photo_data: list[tuple[bytes, str | None, str]] = []
+                photo_phashes: list[str] = []
+                for url in photo_urls[:15]:
+                    img_bytes = await download_photo(url)
+                    if img_bytes:
+                        phash = compute_phash(img_bytes)
+                        photo_data.append((img_bytes, phash, url))
+                        if phash:
+                            photo_phashes.append(phash)
 
-            processed += 1
-            # Commit after each email so progress is saved even if the job is interrupted
-            await db.commit()
+                # Filter out non-property photos (agency logos, agent portraits, etc.)
+                if photo_data:
+                    photo_data = await classify_photos(user.openai_api_key, photo_data)
+                    photo_phashes = [phash for _, phash, _ in photo_data if phash]
+
+                # Skip listings with no photos
+                if not photo_data:
+                    logger.info("Email %s: skipping listing with no usable photos", msg_meta["id"])
+                    continue
+
+                # Check for duplicates
+                existing = await find_duplicate(
+                    db, user.household_id, source,
+                    extracted.source_id, extracted.external_url,
+                    fingerprint, photo_phashes,
+                )
+
+                now = datetime.now(timezone.utc)
+
+                if existing:
+                    logger.info("Duplicate found (listing %d), updating", existing.id)
+                    existing.last_seen_at = now
+                    if extracted.price and extracted.price != existing.price:
+                        db.add(PriceHistory(listing_id=existing.id, price=extracted.price))
+                        existing.price = extracted.price
+                        if existing.sqm and existing.sqm > 0:
+                            existing.price_per_sqm = round(extracted.price / existing.sqm, 2)
+                    # Backfill fields that were missing or have been updated
+                    for field in ("title", "description", "sqm", "bedrooms", "rooms",
+                                  "floor", "city", "district", "location_detail",
+                                  "external_url", "source_id"):
+                        new_val = getattr(extracted, field, None)
+                        if new_val is not None and getattr(existing, field, None) is None:
+                            setattr(existing, field, new_val)
+                else:
+                    listing = Listing(
+                        household_id=user.household_id,
+                        source=source,
+                        source_id=extracted.source_id,
+                        external_url=extracted.external_url,
+                        title=extracted.title,
+                        description=extracted.description,
+                        price=extracted.price,
+                        sqm=extracted.sqm,
+                        price_per_sqm=price_per_sqm,
+                        bedrooms=extracted.bedrooms,
+                        rooms=extracted.rooms,
+                        floor=extracted.floor,
+                        city=extracted.city,
+                        district=extracted.district,
+                        location_detail=extracted.location_detail,
+                        fingerprint=fingerprint,
+                    )
+                    db.add(listing)
+                    await db.flush()
+
+                    # Initial price history
+                    if extracted.price:
+                        db.add(PriceHistory(listing_id=listing.id, price=extracted.price))
+
+                    # Upload photos
+                    for i, (img_bytes, phash, original_url) in enumerate(photo_data):
+                        s3_key = upload_photo(minio_client, img_bytes)
+                        db.add(ListingPhoto(
+                            listing_id=listing.id,
+                            s3_key=s3_key,
+                            original_url=original_url,
+                            phash=phash,
+                            position=i,
+                        ))
+
+                    logger.info("Created new listing %d: %s", listing.id, listing.title)
+
+                processed += 1
+                # Commit after each listing so progress is saved
+                await db.commit()
 
         user.last_email_poll = datetime.now(timezone.utc)
         await db.commit()

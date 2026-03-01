@@ -20,6 +20,8 @@ class Listing(Base):
     sqm: Mapped[float | None] = mapped_column(Float)
     price_per_sqm: Mapped[float | None] = mapped_column(Float)
     bedrooms: Mapped[int | None] = mapped_column(Integer)
+    rooms: Mapped[int | None] = mapped_column(Integer)
+    floor: Mapped[int | None] = mapped_column(Integer)
     city: Mapped[str | None] = mapped_column(String(255))
     district: Mapped[str | None] = mapped_column(String(255))
     location_detail: Mapped[str | None] = mapped_column(String(512))

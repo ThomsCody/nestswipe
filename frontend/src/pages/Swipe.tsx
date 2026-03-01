@@ -74,6 +74,21 @@ function ListingCard({
     <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden max-w-md w-full">
       <PhotoCarousel photos={listing.photos} />
       <div className="p-4">
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+            {listing.source}
+          </span>
+          {listing.floor != null && (
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+              {listing.floor === 0 ? "RDC" : `${listing.floor}e ét.`}
+            </span>
+          )}
+          {listing.bedrooms != null && (
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+              {listing.bedrooms} ch.
+            </span>
+          )}
+        </div>
         <h3 className="font-semibold text-lg text-gray-900 mb-1">{listing.title}</h3>
         <div className="flex flex-wrap gap-3 text-sm text-gray-600 mb-2">
           {listing.price != null && (

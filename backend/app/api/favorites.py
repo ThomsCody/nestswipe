@@ -33,6 +33,8 @@ def _listing_response(listing: Listing) -> ListingResponse:
         sqm=listing.sqm,
         price_per_sqm=listing.price_per_sqm,
         bedrooms=listing.bedrooms,
+        rooms=listing.rooms,
+        floor=listing.floor,
         city=listing.city,
         district=listing.district,
         location_detail=listing.location_detail,

@@ -56,6 +56,16 @@ export default function Favorites() {
               )}
             </div>
             <div className="p-3">
+              <div className="flex flex-wrap gap-1 mb-1">
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-700">
+                  {fav.listing.source}
+                </span>
+                {fav.listing.floor != null && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700">
+                    {fav.listing.floor === 0 ? "RDC" : `${fav.listing.floor}e ét.`}
+                  </span>
+                )}
+              </div>
               <h3 className="font-medium text-gray-900 text-sm truncate">{fav.listing.title}</h3>
               <div className="flex gap-2 text-xs text-gray-500 mt-1">
                 {fav.listing.price != null && (
@@ -64,6 +74,9 @@ export default function Favorites() {
                   </span>
                 )}
                 {fav.listing.sqm != null && <span>{fav.listing.sqm} m&sup2;</span>}
+                {fav.listing.rooms != null && (
+                  <span>{fav.listing.rooms} p.</span>
+                )}
                 {fav.listing.bedrooms != null && <span>{fav.listing.bedrooms} ch.</span>}
               </div>
               <div className="flex items-center justify-between mt-1">

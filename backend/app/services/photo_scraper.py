@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 PHOTO_CDNS = [
     "mms.seloger.com",
     "cdn.pap.fr/photos",
+    "media.apimo.pro/cache",
 ]
 
 # Patterns to exclude (logos, icons, tracking pixels, etc.)

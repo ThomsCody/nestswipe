@@ -17,6 +17,8 @@ Return a JSON object with the following fields (use null for missing values):
 - location_detail: string — more specific location info
 - external_url: string — link to the listing on the source website
 - source_id: string — unique identifier from the source (extract from URL if possible)
+- floor: integer — floor number (0 for ground floor, null if unknown)
+- rooms: integer — total number of rooms (pièces), distinct from bedrooms
 - photo_urls: list of strings — URLs of listing photos found in the email
 - description: string — brief description of the property
 
@@ -31,6 +33,8 @@ class ExtractedListing(BaseModel):
     price: float | None = None
     sqm: float | None = None
     bedrooms: int | None = None
+    floor: int | None = None
+    rooms: int | None = None
     city: str | None = None
     district: str | None = None
     location_detail: str | None = None
