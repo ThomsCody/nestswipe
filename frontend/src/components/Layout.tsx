@@ -1,5 +1,6 @@
+import { useEffect, useRef } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import client from "@/api/client";
 
@@ -13,12 +14,23 @@ const NAV_ITEMS = [
 export default function Layout() {
   const { logout } = useAuth();
   const location = useLocation();
+  const queryClient = useQueryClient();
+  const prevRemaining = useRef<number | null>(null);
 
   const { data: queueData } = useQuery<{ remaining: number }>({
-    queryKey: ["queue"],
+    queryKey: ["queue-badge"],
     queryFn: () => client.get("/listings/queue?limit=1").then((r) => r.data),
     refetchInterval: 10_000,
   });
+
+  // When the remaining count increases, new listings arrived — refresh the swipe queue
+  useEffect(() => {
+    if (queueData == null) return;
+    if (prevRemaining.current !== null && queueData.remaining > prevRemaining.current) {
+      queryClient.invalidateQueries({ queryKey: ["queue"] });
+    }
+    prevRemaining.current = queueData.remaining;
+  }, [queueData, queryClient]);
 
   return (
     <div className="min-h-screen flex flex-col">
