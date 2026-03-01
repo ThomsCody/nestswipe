@@ -17,7 +17,7 @@ from app.api import archives, auth, favorites, household, listings, photos, sett
 async def lifespan(app: FastAPI):
     from app.scheduler import start_scheduler, stop_scheduler
 
-    start_scheduler()
+    await start_scheduler()
     yield
     stop_scheduler()
 
