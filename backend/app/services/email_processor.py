@@ -1,10 +1,8 @@
 import asyncio
 import base64
 import logging
-import re
 from datetime import datetime, timezone
 
-from bs4 import BeautifulSoup
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -15,7 +13,7 @@ from app.models.listing import Listing, ListingPhoto, PriceHistory
 from app.models.user import User
 from app.services.browser_scraper import scrape_listing
 from app.services.duplicate_detector import compute_fingerprint, find_duplicate
-from app.services.llm_extractor import extract_listing
+from app.services.llm_extractor import extract_listing, extract_listings
 from app.services.photo_classifier import classify_photos
 from app.services.photo_scraper import extract_photos_from_html
 from app.services.photo_storage import (
@@ -66,27 +64,6 @@ def _detect_source(from_header: str) -> str:
             return name
     return "unknown"
 
-
-def _split_consultantsimmobilier(html: str) -> list[tuple[str, str]]:
-    """Split a consultantsimmobilier email into per-listing (html_fragment, url) tuples.
-
-    Each listing lives in a <table data-module="module-3"> block containing
-    an ap.immo link and a photo from media.apimo.pro.
-    """
-    soup = BeautifulSoup(html, "html.parser")
-    listings: list[tuple[str, str]] = []
-    for table in soup.find_all("table", attrs={"data-module": "module-3"}):
-        link = table.find("a", href=re.compile(r"https://ap\.immo/p/\d+"))
-        if not link:
-            continue
-        listings.append((str(table), link["href"]))
-    return listings
-
-
-def _extract_ci_source_id(url: str) -> str | None:
-    """Extract the numeric listing ID from an ap.immo/p/{id} URL."""
-    match = re.search(r"ap\.immo/p/(\d+)", url)
-    return match.group(1) if match else None
 
 
 def _extract_html_body(payload: dict) -> str:
@@ -152,35 +129,22 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
 
             logger.info("Processing email from %s (msg %s, %d chars)", source, msg_meta["id"], len(html_body))
 
-            # Consultantsimmobilier emails can contain multiple listings
-            if source == "consultantsimmobilier":
-                fragments = _split_consultantsimmobilier(html_body)
-                if not fragments:
-                    logger.info("Email %s: no listing blocks found", msg_meta["id"])
-                    continue
-                logger.info("Email %s: found %d listing(s)", msg_meta["id"], len(fragments))
-            else:
-                # Other sources: one listing per email, no pre-extracted URL
-                fragments = [(html_body, None)]
+            # Use LLM to extract all listings from the email (handles single and multi-listing)
+            all_extracted = await extract_listings(user.openai_api_key, html_body, source)
+            if not all_extracted:
+                logger.info("Email %s: no listings extracted", msg_meta["id"])
+                continue
+            logger.info("Email %s: extracted %d listing(s)", msg_meta["id"], len(all_extracted))
 
-            for fragment_html, fragment_url in fragments:
-                extracted = await extract_listing(user.openai_api_key, fragment_html, source)
-                if not extracted or not extracted.is_listing or not extracted.title:
-                    logger.info("Email %s: not a listing or extraction failed", msg_meta["id"])
+            for extracted in all_extracted:
+                if not extracted.title:
                     continue
 
                 logger.info("Extracted: %s — %s, %s€, %sm²", extracted.title, extracted.city, extracted.price, extracted.sqm)
 
                 # URL resolution and photo scraping
                 scraped = None
-                if source == "consultantsimmobilier" and fragment_url:
-                    # Keep the original ap.immo URL with auth params (u, p)
-                    # so the user can open it without logging in.
-                    extracted.external_url = fragment_url
-                    extracted.source_id = _extract_ci_source_id(fragment_url)
-                    # Still scrape the page for photos (the auth URL returns 200)
-                    scraped = await scrape_listing(fragment_url, source)
-                elif extracted.external_url:
+                if extracted.external_url:
                     scraped = await scrape_listing(extracted.external_url, source)
                     if scraped.resolved_url:
                         logger.info("Resolved URL: %s -> %s", extracted.external_url, scraped.resolved_url)
@@ -200,7 +164,7 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
 
                 # Photo fallback chain: listing page → email HTML → LLM extraction
                 page_photos = scraped.photo_urls if scraped and scraped.photo_urls else []
-                email_photos = extract_photos_from_html(fragment_html, source)
+                email_photos = extract_photos_from_html(html_body, source)
                 llm_photos = extracted.photo_urls or []
 
                 if page_photos:
