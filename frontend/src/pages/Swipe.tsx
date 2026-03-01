@@ -152,6 +152,11 @@ export default function Swipe() {
   const { data, isLoading } = useQuery<QueueData>({
     queryKey: ["queue"],
     queryFn: () => client.get("/listings/queue?limit=10").then((r) => r.data),
+    refetchInterval: (query) => {
+      // Poll every 30s when the queue is empty so new listings appear automatically
+      const queueEmpty = !query.state.data?.listings.length;
+      return queueEmpty ? 30_000 : false;
+    },
   });
 
   const swipeMutation = useMutation({
