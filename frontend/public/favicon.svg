@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Rounded card -->
+  <rect x="6" y="4" width="52" height="56" rx="10" ry="10" fill="#4f46e5"/>
+  <!-- House roof -->
+  <polygon points="32,16 14,30 50,30" fill="white"/>
+  <!-- House body -->
+  <rect x="19" y="30" width="26" height="18" fill="white"/>
+  <!-- Door -->
+  <rect x="27" y="35" width="10" height="13" rx="1.5" fill="#4f46e5"/>
+</svg>
