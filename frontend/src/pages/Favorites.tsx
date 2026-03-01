@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import client from "@/api/client";
 import { photoUrl } from "@/api/photos";
 import type { Listing } from "@/types";
+import PriceTrend from "@/components/PriceTrend";
 
 interface FavoriteItem {
   id: number;
@@ -81,6 +82,7 @@ export default function Favorites() {
                 {fav.listing.price != null && (
                   <span className="font-medium text-gray-700">
                     {fav.listing.price.toLocaleString("fr-FR")} &euro;
+                    <PriceTrend history={fav.listing.price_history} />
                   </span>
                 )}
                 {fav.listing.sqm != null && <span>{fav.listing.sqm} m&sup2;</span>}

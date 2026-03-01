@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models.interaction import Favorite, SwipeAction, SwipeDirection
 from app.models.listing import Listing, ListingPhoto
 from app.models.user import User
-from app.schemas.listing import ListingResponse, PhotoResponse, QueueResponse, SwipeRequest
+from app.schemas.listing import ListingResponse, PhotoResponse, PriceHistoryItem, QueueResponse, SwipeRequest
 
 router = APIRouter()
 
@@ -37,7 +37,7 @@ async def get_queue(
     ]
     query = (
         select(Listing)
-        .options(selectinload(Listing.photos))
+        .options(selectinload(Listing.photos), selectinload(Listing.price_history))
         .where(*queue_filters)
         .order_by(Listing.first_seen_at.desc())
         .limit(limit)
@@ -68,6 +68,10 @@ async def get_queue(
                 location_detail=l.location_detail,
                 external_url=l.external_url,
                 photos=[PhotoResponse.model_validate(p) for p in sorted(l.photos, key=lambda p: p.position)],
+                price_history=[
+                    PriceHistoryItem(price=ph.price, observed_at=ph.observed_at.isoformat())
+                    for ph in sorted(l.price_history, key=lambda ph: ph.observed_at)
+                ],
             )
             for l in listings
         ],

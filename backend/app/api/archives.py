@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models.interaction import Favorite, SwipeAction, SwipeDirection
 from app.models.listing import Listing
 from app.models.user import User
-from app.schemas.listing import ArchiveListItem, ArchivesListResponse, ListingResponse, PhotoResponse
+from app.schemas.listing import ArchiveListItem, ArchivesListResponse, ListingResponse, PhotoResponse, PriceHistoryItem
 
 router = APIRouter()
 
@@ -30,6 +30,10 @@ def _listing_response(listing: Listing) -> ListingResponse:
         location_detail=listing.location_detail,
         external_url=listing.external_url,
         photos=[PhotoResponse.model_validate(p) for p in sorted(listing.photos, key=lambda p: p.position)],
+        price_history=[
+            PriceHistoryItem(price=ph.price, observed_at=ph.observed_at.isoformat())
+            for ph in sorted(listing.price_history, key=lambda ph: ph.observed_at)
+        ],
     )
 
 
@@ -58,7 +62,10 @@ async def get_archives(
     order = SwipeAction.created_at.desc() if sort == "newest" else SwipeAction.created_at.asc()
 
     query = (
-        base_query.options(selectinload(SwipeAction.listing).selectinload(Listing.photos))
+        base_query.options(
+            selectinload(SwipeAction.listing).selectinload(Listing.photos),
+            selectinload(SwipeAction.listing).selectinload(Listing.price_history),
+        )
         .order_by(order)
         .offset((page - 1) * per_page)
         .limit(per_page)
@@ -96,12 +103,8 @@ async def restore_archive(
     if not swipe:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Archived listing not found")
 
-    # Delete the pass swipe
-    await db.delete(swipe)
-
-    # Create a "like" swipe so it doesn't reappear in queue
-    like_swipe = SwipeAction(user_id=user.id, listing_id=listing_id, action=SwipeDirection.like)
-    db.add(like_swipe)
+    # Flip the pass swipe to a like so it doesn't reappear in queue
+    swipe.action = SwipeDirection.like
 
     # Create favorite if not already exists
     existing_fav = await db.execute(

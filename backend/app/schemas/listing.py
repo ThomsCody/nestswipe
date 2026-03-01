@@ -9,6 +9,13 @@ class PhotoResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PriceHistoryItem(BaseModel):
+    price: float
+    observed_at: str
+
+    model_config = {"from_attributes": True}
+
+
 class ListingResponse(BaseModel):
     id: int
     source: str
@@ -25,6 +32,7 @@ class ListingResponse(BaseModel):
     location_detail: str | None
     external_url: str | None
     photos: list[PhotoResponse]
+    price_history: list[PriceHistoryItem] = []
 
     model_config = {"from_attributes": True}
 

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import client from "@/api/client";
 import { photoUrl } from "@/api/photos";
 import type { Listing, Comment, PriceHistoryEntry } from "@/types";
+import PriceTrend from "@/components/PriceTrend";
 
 interface FavoriteDetailData {
   id: number;
@@ -298,6 +299,7 @@ export default function FavoriteDetail() {
           {listing.price != null && (
             <span className="font-medium text-gray-900">
               {listing.price.toLocaleString("fr-FR")} &euro;
+              <PriceTrend history={data.price_history} />
             </span>
           )}
           {listing.sqm != null && <span>{listing.sqm} m&sup2;</span>}

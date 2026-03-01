@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.interaction import Comment, Favorite
-from app.models.listing import Listing, PriceHistory
+from app.models.listing import Listing
 from app.models.user import User
 from app.schemas.favorite import (
     CommentCreateRequest,
@@ -18,7 +18,7 @@ from app.schemas.favorite import (
     FavoritesListResponse,
     FavoriteUpdateRequest,
 )
-from app.schemas.listing import ListingResponse, PhotoResponse
+from app.schemas.listing import ListingResponse, PhotoResponse, PriceHistoryItem
 
 router = APIRouter()
 
@@ -40,6 +40,10 @@ def _listing_response(listing: Listing) -> ListingResponse:
         location_detail=listing.location_detail,
         external_url=listing.external_url,
         photos=[PhotoResponse.model_validate(p) for p in sorted(listing.photos, key=lambda p: p.position)],
+        price_history=[
+            PriceHistoryItem(price=ph.price, observed_at=ph.observed_at.isoformat())
+            for ph in sorted(listing.price_history, key=lambda ph: ph.observed_at)
+        ],
     )
 
 
@@ -64,6 +68,7 @@ async def get_favorites(
         base_query
         .options(
             selectinload(Favorite.listing).selectinload(Listing.photos),
+            selectinload(Favorite.listing).selectinload(Listing.price_history),
             selectinload(Favorite.comments),
         )
         .order_by(order)
@@ -98,6 +103,7 @@ async def get_favorite(
         select(Favorite)
         .options(
             selectinload(Favorite.listing).selectinload(Listing.photos),
+            selectinload(Favorite.listing).selectinload(Listing.price_history),
             selectinload(Favorite.comments).selectinload(Comment.user),
         )
         .where(Favorite.id == favorite_id, Favorite.household_id == user.household_id)
@@ -106,13 +112,7 @@ async def get_favorite(
     if not fav:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Favorite not found")
 
-    # Get price history
-    ph_result = await db.execute(
-        select(PriceHistory)
-        .where(PriceHistory.listing_id == fav.listing_id)
-        .order_by(PriceHistory.observed_at)
-    )
-    price_history = ph_result.scalars().all()
+    price_history = sorted(fav.listing.price_history, key=lambda ph: ph.observed_at)
 
     return FavoriteDetailResponse(
         id=fav.id,
@@ -151,6 +151,7 @@ async def update_favorite(
         select(Favorite)
         .options(
             selectinload(Favorite.listing).selectinload(Listing.photos),
+            selectinload(Favorite.listing).selectinload(Listing.price_history),
             selectinload(Favorite.comments).selectinload(Comment.user),
         )
         .where(Favorite.id == favorite_id, Favorite.household_id == user.household_id)
@@ -173,13 +174,7 @@ async def update_favorite(
     await db.commit()
     await db.refresh(fav)
 
-    # Get price history
-    ph_result = await db.execute(
-        select(PriceHistory)
-        .where(PriceHistory.listing_id == fav.listing_id)
-        .order_by(PriceHistory.observed_at)
-    )
-    price_history = ph_result.scalars().all()
+    price_history = sorted(fav.listing.price_history, key=lambda ph: ph.observed_at)
 
     return FavoriteDetailResponse(
         id=fav.id,

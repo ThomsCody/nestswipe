@@ -3,6 +3,7 @@ import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-q
 import client from "@/api/client";
 import { photoUrl } from "@/api/photos";
 import type { Listing } from "@/types";
+import PriceTrend from "@/components/PriceTrend";
 
 interface ArchiveItem {
   listing: Listing;
@@ -122,6 +123,7 @@ export default function Archives() {
                 {item.listing.price != null && (
                   <span className="font-medium text-gray-700">
                     {item.listing.price.toLocaleString("fr-FR")} &euro;
+                    <PriceTrend history={item.listing.price_history} />
                   </span>
                 )}
                 {item.listing.sqm != null && <span>{item.listing.sqm} m&sup2;</span>}
