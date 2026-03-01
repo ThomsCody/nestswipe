@@ -83,8 +83,13 @@ function ListingCard({
               {listing.floor === 0 ? "RDC" : `${listing.floor}e ét.`}
             </span>
           )}
-          {listing.bedrooms != null && (
+          {listing.rooms != null && (
             <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+              {listing.rooms} p.
+            </span>
+          )}
+          {listing.bedrooms != null && (
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
               {listing.bedrooms} ch.
             </span>
           )}
@@ -100,11 +105,8 @@ function ListingCard({
           {listing.price_per_sqm != null && (
             <span>{listing.price_per_sqm.toLocaleString("fr-FR")} &euro;/m&sup2;</span>
           )}
-          {listing.bedrooms != null && (
-            <span>
-              {listing.bedrooms} ch.
-            </span>
-          )}
+          {listing.rooms != null && <span>{listing.rooms} p.</span>}
+          {listing.bedrooms != null && <span>{listing.bedrooms} ch.</span>}
         </div>
         {(listing.city || listing.district) && (
           <p className="text-sm text-gray-500 mb-1">
