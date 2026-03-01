@@ -41,7 +41,9 @@ def start_scheduler():
         replace_existing=True,
     )
     scheduler.start()
-    logger.info("Scheduler started, polling every %d minutes", settings.email_poll_interval_minutes)
+    job = scheduler.get_job("poll_emails")
+    next_run = job.next_run_time.strftime("%Y-%m-%d %H:%M:%S") if job and job.next_run_time else "unknown"
+    logger.info("Scheduler started, polling every %d minutes (next run: %s)", settings.email_poll_interval_minutes, next_run)
 
 
 def stop_scheduler():
