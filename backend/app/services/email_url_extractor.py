@@ -1,131 +1,59 @@
-"""Mechanical URL extraction from email HTML — no LLM needed."""
+"""Extract listing URLs from email HTML using LLM."""
 
+import json
 import logging
-import re
-from urllib.parse import urlparse
 
-from bs4 import BeautifulSoup
+from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
-# Domains (and subdomains) that host actual listing pages per source
-SOURCE_DOMAINS = {
-    "seloger": ["seloger.com"],
-    "pap": ["pap.fr"],
-    "consultantsimmobilier": ["consultantsimmobilier.com", "apimo.net"],
-}
+SYSTEM_PROMPT = """You extract property listing URLs from email HTML content.
+The email is an alert from a real estate website containing one or more property listings.
 
-# Known tracking / redirect domains that wrap listing URLs
-TRACKING_DOMAINS = [
-    "mailing.seloger.com",
-    "click.pap.fr",
-    "email.pap.fr",
-    "track.",
-    "click.",
-    "redirect.",
-    "lnk.",
-    "trk.",
-    "r.mail.",
-]
+Return a JSON object with a single key "urls" containing an array of URL strings.
 
-# Schemes and prefixes to always exclude
-EXCLUDE_PREFIXES = [
-    "mailto:",
-    "tel:",
-    "javascript:",
-    "data:",
-    "#",
-]
-
-# Domains to always exclude (social, unsubscribe, generic)
-EXCLUDE_DOMAINS = [
-    "facebook.com",
-    "twitter.com",
-    "instagram.com",
-    "linkedin.com",
-    "youtube.com",
-    "google.com/maps",
-    "apple.com",
-    "play.google.com",
-    "apps.apple.com",
-]
-
-# Path patterns to exclude
-EXCLUDE_PATH_PATTERNS = [
-    "/unsubscribe",
-    "/desabonnement",
-    "/desinscription",
-    "/preferences",
-    "/mes-alertes",
-    "/mes-recherches",
-    "/login",
-    "/signup",
-    "/contact",
-    "/cgu",
-    "/politique-de-confidentialite",
-    "/privacy",
-]
+Rules:
+- Return exactly ONE URL per property listing (the main link to view the listing).
+- If the only link available is a tracking/redirect URL (e.g. click.by.seloger.com/?qs=...), use that.
+- Do NOT include: unsubscribe, social media, app store, image, alert management, login, or homepage links.
+- If no listing URLs are found, return {"urls": []}.
+- If a listing has multiple links (title link, image link, "see more" link), pick just ONE."""
 
 
-def _is_from_source_domain(url: str, source: str) -> bool:
-    """Check if URL belongs to a known domain for this source."""
-    domains = SOURCE_DOMAINS.get(source, [])
-    hostname = urlparse(url).hostname or ""
-    return any(hostname == d or hostname.endswith("." + d) for d in domains)
+async def extract_listing_urls(api_key: str, html: str, source: str) -> list[str]:
+    """Extract listing URLs from email HTML using LLM.
 
-
-def _is_tracking_url(url: str) -> bool:
-    """Check if URL is from a known tracking/redirect domain."""
-    hostname = urlparse(url).hostname or ""
-    return any(t in hostname for t in TRACKING_DOMAINS)
-
-
-def _should_exclude(url: str) -> bool:
-    """Check if URL should be excluded."""
-    lower = url.lower().strip()
-    if any(lower.startswith(p) for p in EXCLUDE_PREFIXES):
-        return True
-    hostname = urlparse(lower).hostname or ""
-    if any(d in hostname for d in EXCLUDE_DOMAINS):
-        return True
-    path = urlparse(lower).path
-    if any(p in path for p in EXCLUDE_PATH_PATTERNS):
-        return True
-    # Exclude image files
-    if re.search(r"\.(png|gif|jpg|jpeg|svg|ico|webp|bmp)(\?|$)", path):
-        return True
-    return False
-
-
-def _base_url(url: str) -> str:
-    """Normalize URL for deduplication: strip fragment and common tracking params."""
-    parsed = urlparse(url)
-    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-
-
-def extract_listing_urls(html: str, source: str) -> list[str]:
-    """Extract candidate listing URLs from email HTML.
-
-    Returns deduplicated URLs from the source domain or known tracking domains.
+    Returns a list of candidate URLs pointing to individual listing pages.
     """
-    soup = BeautifulSoup(html, "html.parser")
-    seen: set[str] = set()
-    urls: list[str] = []
-
-    for a in soup.find_all("a", href=True):
-        href = a["href"].strip()
-        if not href or _should_exclude(href):
-            continue
-        if not href.startswith("http"):
-            continue
-        if not (_is_from_source_domain(href, source) or _is_tracking_url(href)):
-            continue
-
-        base = _base_url(href)
-        if base in seen:
-            continue
-        seen.add(base)
-        urls.append(href)
-
-    logger.info("Extracted %d candidate listing URL(s) from %s email", len(urls), source)
-    return urls
+    try:
+        client = AsyncOpenAI(api_key=api_key)
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": f"Source: {source}\n\nEmail HTML:\n{html[:50000]}",
+                },
+            ],
+            temperature=0,
+            max_tokens=4096,
+        )
+        content = response.choices[0].message.content
+        if not content:
+            return []
+        data = json.loads(content)
+        urls = data.get("urls", [])
+        # Deduplicate while preserving order
+        seen: set[str] = set()
+        unique: list[str] = []
+        for url in urls:
+            if isinstance(url, str) and url not in seen:
+                seen.add(url)
+                unique.append(url)
+        logger.info("LLM extracted %d listing URL(s) from %s email", len(unique), source)
+        return unique
+    except Exception:
+        logger.exception("LLM URL extraction failed")
+        return []

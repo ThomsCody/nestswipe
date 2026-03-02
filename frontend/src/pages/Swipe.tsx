@@ -161,7 +161,25 @@ export default function Swipe() {
   const swipeMutation = useMutation({
     mutationFn: ({ id, action }: { id: number; action: string }) =>
       client.post(`/listings/${id}/swipe`, { action }),
-    onSuccess: () => {
+    onMutate: async ({ id }) => {
+      // Cancel in-flight refetches so they don't overwrite our optimistic update
+      await queryClient.cancelQueries({ queryKey: ["queue"] });
+      const previous = queryClient.getQueryData<QueueData>(["queue"]);
+      // Immediately remove the swiped listing from the cache
+      queryClient.setQueryData<QueueData>(["queue"], (old) => {
+        if (!old) return old;
+        const filtered = old.listings.filter((l) => l.id !== id);
+        return { listings: filtered, remaining: Math.max(0, old.remaining - 1) };
+      });
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      // Roll back on error
+      if (context?.previous) {
+        queryClient.setQueryData(["queue"], context.previous);
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["queue"] });
       queryClient.invalidateQueries({ queryKey: ["queue-badge"] });
       queryClient.invalidateQueries({ queryKey: ["favorites"] });

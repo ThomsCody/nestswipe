@@ -131,8 +131,8 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
 
             logger.info("Processing email from %s (msg %s, %d chars)", source, msg_meta["id"], len(html_body))
 
-            # Step 1: Mechanically extract candidate listing URLs from email HTML
-            candidate_urls = extract_listing_urls(html_body, source)
+            # Step 1: Extract candidate listing URLs from email HTML via LLM
+            candidate_urls = await extract_listing_urls(user.openai_api_key, html_body, source)
             if not candidate_urls:
                 logger.info("Email %s: no candidate URLs found", msg_meta["id"])
                 continue

@@ -191,23 +191,6 @@ def _extract_page_text(html: str) -> str | None:
     return text[:PAGE_TEXT_MAX_CHARS]
 
 
-def _is_valid_listing_url(url: str, source: str) -> bool:
-    """Check if a resolved URL points to an actual listing page (not error/homepage)."""
-    lower = url.lower()
-    # Reject known bad pages
-    bad_patterns = [
-        "expired.html", "redirect_error.html", "error",
-        "/mes-alertes", "/mes-recherches", "/login",
-    ]
-    if any(p in lower for p in bad_patterns):
-        return False
-    # Must be on the expected domain with a listing-like path
-    if source == "seloger":
-        return "seloger.com/annonces/" in lower
-    elif source == "pap":
-        return "pap.fr/annonce" in lower
-    return True
-
 
 async def scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
     """
@@ -243,11 +226,6 @@ async def scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
             final_url = str(resp.url)
             if final_url and final_url != tracking_url:
                 logger.info("Resolved URL: %s -> %s", tracking_url, final_url)
-
-            # Discard bad resolved URLs (expired, error pages, homepage)
-            if not _is_valid_listing_url(final_url, source):
-                logger.warning("Resolved to non-listing page: %s", final_url)
-                return result
 
             result.resolved_url = _clean_url(final_url)
             result.source_id = _extract_source_id(final_url, source)
