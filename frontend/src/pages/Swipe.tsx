@@ -232,6 +232,7 @@ export default function Swipe() {
         <span className="ml-3 text-xs">(← pass | like →)</span>
       </p>
       <ListingCard
+        key={currentListing.id}
         listing={currentListing}
         onSwipe={handleSwipe}
         isPending={swipeMutation.isPending}

@@ -141,6 +141,10 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
             # Pre-extract email photos as fallback (cheap, no LLM)
             email_photos = extract_photos_from_html(html_body, source)
 
+            # Track resolved listings to avoid re-processing duplicate tracking URLs
+            seen_source_ids: set[str] = set()
+            seen_resolved_urls: set[str] = set()
+
             for url in candidate_urls:
                 # Step 2: Scrape listing page → resolved URL, source_id, photos, page text
                 scraped = await scrape_listing(url, source)
@@ -150,6 +154,15 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                 if not scraped.page_text:
                     logger.info("Skipping URL (no page text extracted): %s", url)
                     continue
+                if scraped.source_id and scraped.source_id in seen_source_ids:
+                    logger.info("Skipping duplicate source_id %s: %s", scraped.source_id, url)
+                    continue
+                if scraped.resolved_url in seen_resolved_urls:
+                    logger.info("Skipping duplicate resolved URL %s: %s", scraped.resolved_url, url)
+                    continue
+                if scraped.source_id:
+                    seen_source_ids.add(scraped.source_id)
+                seen_resolved_urls.add(scraped.resolved_url)
 
                 # Step 3: LLM extraction on page text
                 extracted = await extract_listing_from_page(

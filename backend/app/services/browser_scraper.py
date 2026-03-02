@@ -76,6 +76,12 @@ def _extract_source_id(url: str, source: str) -> str | None:
     if source == "seloger":
         # URL like: https://www.seloger.com/annonces/achat/.../228288697.htm
         match = re.search(r"/(\d{6,})\.htm", url)
+        if match:
+            return match.group(1)
+        # bellesdemeures.com redirects from seloger emails
+        # URL like: https://www.bellesdemeures.com/annonces/vente/tt-2-tb-1-pl-48258/256203535/
+        path = urlparse(url).path
+        match = re.search(r"/(\d{6,})/?$", path)
         return match.group(1) if match else None
     elif source == "pap":
         # URL like: https://www.pap.fr/annonces/-r461702551
