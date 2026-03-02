@@ -51,11 +51,15 @@ HEADERS = {
 }
 
 
+PAGE_TEXT_MAX_CHARS = 30_000
+
+
 @dataclass
 class ScrapedListing:
     resolved_url: str | None = None
     source_id: str | None = None
     photo_urls: list[str] = field(default_factory=list)
+    page_text: str | None = None
 
 
 def _clean_url(url: str) -> str:
@@ -173,6 +177,20 @@ def _extract_photos_from_html(html: str, source: str) -> list[str]:
     return photos[:20]
 
 
+def _extract_page_text(html: str) -> str | None:
+    """Extract readable text from listing page HTML, stripping nav/scripts."""
+    soup = BeautifulSoup(html, "html.parser")
+    # Remove non-content elements
+    for tag in soup(["script", "style", "nav", "footer", "header", "noscript", "svg", "iframe"]):
+        tag.decompose()
+    text = soup.get_text(separator="\n", strip=True)
+    # Collapse multiple blank lines
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    if not text or len(text) < 50:
+        return None
+    return text[:PAGE_TEXT_MAX_CHARS]
+
+
 def _is_valid_listing_url(url: str, source: str) -> bool:
     """Check if a resolved URL points to an actual listing page (not error/homepage)."""
     lower = url.lower()
@@ -236,9 +254,11 @@ async def scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
 
             if resp.status_code == 200:
                 result.photo_urls = _extract_photos_from_html(resp.text, source)
+                result.page_text = _extract_page_text(resp.text)
                 logger.info(
-                    "Scraped listing: url=%s source_id=%s photos=%d",
+                    "Scraped listing: url=%s source_id=%s photos=%d page_text=%d chars",
                     result.resolved_url, result.source_id, len(result.photo_urls),
+                    len(result.page_text) if result.page_text else 0,
                 )
             else:
                 logger.warning(

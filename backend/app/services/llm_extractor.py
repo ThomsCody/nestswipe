@@ -52,6 +52,29 @@ IMPORTANT:
 - Each listing should be a separate element in the array."""
 
 
+PAGE_SYSTEM_PROMPT = """You extract structured housing listing data from a property listing web page.
+The text below is the readable content of a listing page on a real estate website.
+
+Return a JSON object with the following fields (use null for missing values):
+- is_listing: boolean — true if this page contains a property listing, false otherwise
+- title: string — short listing title
+- price: number — total price in euros (no currency symbol)
+- sqm: number — square meters (surface)
+- bedrooms: integer — number of bedrooms (chambres)
+- city: string — city name
+- district: string — district/neighborhood (quartier/arrondissement)
+- location_detail: string — more specific location info (street, metro, etc.)
+- floor: integer — floor number (0 for ground floor / rez-de-chaussée, null if unknown)
+- rooms: integer — total number of rooms (pièces), distinct from bedrooms
+- description: string — brief description of the property (2-3 sentences max)
+
+IMPORTANT:
+- Only extract data for residential property listings (apartments/houses for sale).
+- If the page is not a listing (error page, search results, homepage), return {"is_listing": false}.
+- Pay close attention to bedrooms vs rooms: "chambres" = bedrooms, "pièces" = rooms.
+- Floor: "rez-de-chaussée" / "RDC" = 0, "1er étage" = 1, etc."""
+
+
 class ExtractedListing(BaseModel):
     is_listing: bool
     title: str | None = None
@@ -119,3 +142,34 @@ async def extract_listings(api_key: str, email_html: str, source: str) -> list[E
     except Exception:
         logger.exception("LLM multi-listing extraction failed")
         return []
+
+
+async def extract_listing_from_page(
+    api_key: str, page_text: str, source: str
+) -> ExtractedListing | None:
+    """Extract a single listing from scraped page text using the LLM."""
+    try:
+        client = AsyncOpenAI(api_key=api_key)
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": PAGE_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": f"Source: {source}\n\nPage text:\n{page_text[:30000]}",
+                },
+            ],
+            temperature=0,
+        )
+        content = response.choices[0].message.content
+        if not content:
+            return None
+        data = json.loads(content)
+        result = ExtractedListing(**data)
+        if not result.is_listing:
+            return None
+        return result
+    except Exception:
+        logger.exception("LLM page extraction failed")
+        return None

@@ -13,7 +13,8 @@ from app.models.listing import Listing, ListingPhoto, PriceHistory
 from app.models.user import User
 from app.services.browser_scraper import scrape_listing
 from app.services.duplicate_detector import compute_fingerprint, find_duplicate
-from app.services.llm_extractor import extract_listing, extract_listings
+from app.services.email_url_extractor import extract_listing_urls
+from app.services.llm_extractor import extract_listing_from_page
 from app.services.photo_classifier import classify_photos
 from app.services.photo_scraper import extract_photos_from_html
 from app.services.photo_storage import (
@@ -130,28 +131,44 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
 
             logger.info("Processing email from %s (msg %s, %d chars)", source, msg_meta["id"], len(html_body))
 
-            # Use LLM to extract all listings from the email (handles single and multi-listing)
-            all_extracted = await extract_listings(user.openai_api_key, html_body, source)
-            if not all_extracted:
-                logger.info("Email %s: no listings extracted", msg_meta["id"])
+            # Step 1: Mechanically extract candidate listing URLs from email HTML
+            candidate_urls = extract_listing_urls(html_body, source)
+            if not candidate_urls:
+                logger.info("Email %s: no candidate URLs found", msg_meta["id"])
                 continue
-            logger.info("Email %s: extracted %d listing(s)", msg_meta["id"], len(all_extracted))
+            logger.info("Email %s: found %d candidate URL(s)", msg_meta["id"], len(candidate_urls))
 
-            for extracted in all_extracted:
-                if not extracted.title:
+            # Pre-extract email photos as fallback (cheap, no LLM)
+            email_photos = extract_photos_from_html(html_body, source)
+
+            for url in candidate_urls:
+                # Step 2: Scrape listing page → resolved URL, source_id, photos, page text
+                scraped = await scrape_listing(url, source)
+                if not scraped.resolved_url:
+                    logger.info("Skipping URL (no valid resolved page): %s", url)
+                    continue
+                if not scraped.page_text:
+                    logger.info("Skipping URL (no page text extracted): %s", url)
                     continue
 
-                logger.info("Extracted: %s — %s, %s€, %sm²", extracted.title, extracted.city, extracted.price, extracted.sqm)
+                # Step 3: LLM extraction on page text
+                extracted = await extract_listing_from_page(
+                    user.openai_api_key, scraped.page_text, source
+                )
+                if not extracted or not extracted.title:
+                    logger.info("Skipping URL (LLM found no listing): %s", url)
+                    continue
 
-                # URL resolution and photo scraping
-                scraped = None
-                if extracted.external_url:
-                    scraped = await scrape_listing(extracted.external_url, source)
-                    if scraped.resolved_url:
-                        logger.info("Resolved URL: %s -> %s", extracted.external_url, scraped.resolved_url)
-                        extracted.external_url = scraped.resolved_url
-                    if scraped.source_id:
-                        extracted.source_id = scraped.source_id
+                # Use resolved URL and source_id from scraper
+                extracted.external_url = scraped.resolved_url
+                if scraped.source_id:
+                    extracted.source_id = scraped.source_id
+
+                logger.info(
+                    "Extracted from page: %s — %s, %s€, %sm², %s bedrooms, floor %s",
+                    extracted.title, extracted.city, extracted.price,
+                    extracted.sqm, extracted.bedrooms, extracted.floor,
+                )
 
                 # Compute price_per_sqm
                 price_per_sqm = None
@@ -163,11 +180,8 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                     extracted.sqm, extracted.bedrooms, extracted.price,
                 )
 
-                # Photo fallback chain: listing page → email HTML → LLM extraction
-                page_photos = scraped.photo_urls if scraped and scraped.photo_urls else []
-                email_photos = extract_photos_from_html(html_body, source)
-                llm_photos = extracted.photo_urls or []
-
+                # Photo fallback chain: listing page → email HTML
+                page_photos = scraped.photo_urls or []
                 if page_photos:
                     photo_urls = page_photos
                     logger.info("Using %d photos from listing page", len(photo_urls))
@@ -175,17 +189,16 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                     photo_urls = email_photos
                     logger.info("Falling back to %d photos from email HTML", len(photo_urls))
                 else:
-                    photo_urls = llm_photos
-                    logger.info("Falling back to %d photos from LLM extraction", len(photo_urls))
+                    photo_urls = []
 
                 # Download photos and compute phashes
                 photo_data: list[tuple[bytes, str | None, str]] = []
                 photo_phashes: list[str] = []
-                for url in photo_urls[:15]:
-                    img_bytes = await download_photo(url)
+                for photo_url in photo_urls[:15]:
+                    img_bytes = await download_photo(photo_url)
                     if img_bytes:
                         phash = compute_phash(img_bytes)
-                        photo_data.append((img_bytes, phash, url))
+                        photo_data.append((img_bytes, phash, photo_url))
                         if phash:
                             photo_phashes.append(phash)
 
@@ -196,7 +209,7 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
 
                 # Skip listings with no photos
                 if not photo_data:
-                    logger.info("Email %s: skipping listing with no usable photos", msg_meta["id"])
+                    logger.info("Skipping listing with no usable photos: %s", url)
                     continue
 
                 # Check for duplicates
@@ -216,13 +229,13 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                         existing.price = extracted.price
                         if existing.sqm and existing.sqm > 0:
                             existing.price_per_sqm = round(extracted.price / existing.sqm, 2)
-                    # Backfill fields that were missing or have been updated
-                    for field in ("title", "description", "sqm", "bedrooms", "rooms",
-                                  "floor", "city", "district", "location_detail",
-                                  "external_url", "source_id"):
-                        new_val = getattr(extracted, field, None)
-                        if new_val is not None and getattr(existing, field, None) is None:
-                            setattr(existing, field, new_val)
+                    # Backfill fields that were missing
+                    for fld in ("title", "description", "sqm", "bedrooms", "rooms",
+                                "floor", "city", "district", "location_detail",
+                                "external_url", "source_id"):
+                        new_val = getattr(extracted, fld, None)
+                        if new_val is not None and getattr(existing, fld, None) is None:
+                            setattr(existing, fld, new_val)
                 else:
                     listing = Listing(
                         household_id=user.household_id,
