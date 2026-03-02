@@ -49,8 +49,9 @@ def _build_query(last_poll: datetime | None) -> str:
     sources = " OR ".join(f"from:{s}" for s in SOURCES)
     query = f"({sources})"
     if last_poll:
-        date_str = last_poll.strftime("%Y/%m/%d")
-        query += f" after:{date_str}"
+        # Use epoch seconds for second-level precision (YYYY/MM/DD is day-level)
+        epoch = int(last_poll.timestamp())
+        query += f" after:{epoch}"
     else:
         # First run: only fetch recent emails (tracking URLs expire after ~7 days)
         query += " newer_than:14d"

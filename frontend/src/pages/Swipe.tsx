@@ -163,6 +163,7 @@ export default function Swipe() {
       client.post(`/listings/${id}/swipe`, { action }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["queue"] });
+      queryClient.invalidateQueries({ queryKey: ["queue-badge"] });
       queryClient.invalidateQueries({ queryKey: ["favorites"] });
     },
   });
