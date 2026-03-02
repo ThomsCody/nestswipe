@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import client from "@/api/client";
 import { photoUrl } from "@/api/photos";
@@ -82,9 +83,10 @@ export default function Archives() {
       </h2>
       <div className="grid gap-4 sm:grid-cols-2">
         {allItems.map((item) => (
-          <div
+          <Link
             key={item.listing.id}
-            className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden"
+            to={`/archives/${item.listing.id}`}
+            className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow"
           >
             <div className="h-40 bg-gray-200">
               {item.listing.photos[0] && (
@@ -145,7 +147,7 @@ export default function Archives() {
                   <span />
                 )}
                 <button
-                  onClick={() => restore.mutate(item.listing.id)}
+                  onClick={(e) => { e.preventDefault(); restore.mutate(item.listing.id); }}
                   disabled={restore.isPending}
                   className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded bg-pink-50 text-pink-600 hover:bg-pink-100 transition-colors disabled:opacity-50"
                 >
@@ -156,7 +158,7 @@ export default function Archives() {
                 </button>
               </div>
             </div>
-          </div>
+          </Link>
         ))}
       </div>
       <div ref={sentinelRef} className="h-10 flex items-center justify-center">

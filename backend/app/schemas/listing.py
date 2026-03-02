@@ -54,3 +54,9 @@ class ArchiveListItem(BaseModel):
 class ArchivesListResponse(BaseModel):
     archives: list[ArchiveListItem]
     total: int
+
+
+class ArchiveDetailResponse(BaseModel):
+    listing: ListingResponse
+    price_history: list[PriceHistoryItem]
+    passed_at: str

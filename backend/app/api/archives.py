@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models.interaction import Favorite, SwipeAction, SwipeDirection
 from app.models.listing import Listing
 from app.models.user import User
-from app.schemas.listing import ArchiveListItem, ArchivesListResponse, ListingResponse, PhotoResponse, PriceHistoryItem
+from app.schemas.listing import ArchiveDetailResponse, ArchiveListItem, ArchivesListResponse, ListingResponse, PhotoResponse, PriceHistoryItem
 
 router = APIRouter()
 
@@ -82,6 +82,43 @@ async def get_archives(
             for s in swipes
         ],
         total=total,
+    )
+
+
+@router.get("/{listing_id}", response_model=ArchiveDetailResponse)
+async def get_archive_detail(
+    listing_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(SwipeAction)
+        .where(
+            SwipeAction.user_id == user.id,
+            SwipeAction.listing_id == listing_id,
+            SwipeAction.action == SwipeDirection.pass_,
+        )
+        .join(Listing, SwipeAction.listing_id == Listing.id)
+        .where(Listing.household_id == user.household_id)
+        .options(
+            selectinload(SwipeAction.listing).selectinload(Listing.photos),
+            selectinload(SwipeAction.listing).selectinload(Listing.price_history),
+        )
+    )
+    swipe = result.scalar_one_or_none()
+    if not swipe:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Archived listing not found")
+
+    listing = swipe.listing
+    price_history = sorted(listing.price_history, key=lambda ph: ph.observed_at)
+
+    return ArchiveDetailResponse(
+        listing=_listing_response(listing),
+        price_history=[
+            PriceHistoryItem(price=ph.price, observed_at=ph.observed_at.isoformat())
+            for ph in price_history
+        ],
+        passed_at=swipe.created_at.isoformat(),
     )
 
 

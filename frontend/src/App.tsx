@@ -6,6 +6,7 @@ import Swipe from "@/pages/Swipe";
 import Favorites from "@/pages/Favorites";
 import FavoriteDetail from "@/pages/FavoriteDetail";
 import Archives from "@/pages/Archives";
+import ArchiveDetail from "@/pages/ArchiveDetail";
 import Settings from "@/pages/Settings";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="/favorites" element={<Favorites />} />
         <Route path="/favorites/:id" element={<FavoriteDetail />} />
         <Route path="/archives" element={<Archives />} />
+        <Route path="/archives/:listingId" element={<ArchiveDetail />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/swipe" replace />} />
