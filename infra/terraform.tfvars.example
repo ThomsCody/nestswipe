@@ -1,0 +1,15 @@
+# Copy this file to terraform.tfvars and fill in your values.
+# Do NOT commit terraform.tfvars — it is gitignored.
+
+tenancy_ocid     = "ocid1.tenancy.oc1..aaaaaaaaXXXXXXXX"
+user_ocid        = "ocid1.user.oc1..aaaaaaaaXXXXXXXX"
+compartment_ocid = "ocid1.tenancy.oc1..aaaaaaaaXXXXXXXX"  # use tenancy OCID for root compartment
+fingerprint      = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
+private_key_path = "~/.oci/oci_api_key.pem"
+region           = "eu-paris-1"
+
+ssh_public_key_path = "~/.ssh/id_rsa.pub"
+
+instance_ocpus        = 4
+instance_memory_gb    = 24
+instance_display_name = "nestswipe"

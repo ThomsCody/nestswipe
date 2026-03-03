@@ -20,6 +20,8 @@ frontend/dist/
 # Environment
 .env
 oauth.json
+deploy/.env
+deploy/oauth.json
 
 # IDE
 .idea/
@@ -37,3 +39,10 @@ minio_data/
 
 # Alembic
 backend/alembic/versions/__pycache__/
+
+# Terraform
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/*.tfvars
+infra/.terraform.lock.hcl
