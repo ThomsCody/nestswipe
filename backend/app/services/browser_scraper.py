@@ -118,6 +118,17 @@ def _normalize_photo_url(url: str) -> str:
 def _extract_photos_from_html(html: str, source: str) -> list[str]:
     """Extract property photo URLs from rendered listing page HTML."""
     soup = BeautifulSoup(html, "html.parser")
+
+    # Remove recommendation / cross-sell / similar listings sections
+    # so we only get photos from the current listing.
+    to_remove = []
+    for tag in soup.find_all(["section", "div", "aside"], class_=True):
+        classes = " ".join(tag["class"]).lower()
+        if any(kw in classes for kw in ("crosslink", "cross-sell", "similar", "recommend", "suggestion")):
+            to_remove.append(tag)
+    for tag in to_remove:
+        tag.decompose()
+
     seen_base: set[str] = set()
     photos: list[str] = []
 

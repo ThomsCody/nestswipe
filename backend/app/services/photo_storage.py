@@ -24,11 +24,18 @@ def ensure_bucket(client: Minio) -> None:
         client.make_bucket(settings.minio_bucket)
 
 
+MIN_PHOTO_DIMENSION = 200
+
+
 async def download_photo(url: str) -> bytes | None:
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(url, follow_redirects=True)
             if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("image"):
+                img = Image.open(io.BytesIO(resp.content))
+                w, h = img.size
+                if w < MIN_PHOTO_DIMENSION or h < MIN_PHOTO_DIMENSION:
+                    return None
                 return resp.content
     except Exception:
         pass
