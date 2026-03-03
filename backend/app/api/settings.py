@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
+from openai import AsyncOpenAI, AuthenticationError, APIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -33,7 +34,23 @@ async def update_settings(
     db: AsyncSession = Depends(get_db),
 ):
     if body.openai_api_key is not None:
-        user.openai_api_key = body.openai_api_key if body.openai_api_key else None
+        key = body.openai_api_key.strip()
+        if key:
+            # Validate the key with a lightweight API call
+            try:
+                test_client = AsyncOpenAI(api_key=key)
+                await test_client.models.list()
+            except AuthenticationError:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Invalid OpenAI API key. Please check your key and try again.",
+                )
+            except APIError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"OpenAI API error: {e.message}",
+                )
+        user.openai_api_key = key or None
     await db.commit()
     await db.refresh(user)
     return SettingsResponse(

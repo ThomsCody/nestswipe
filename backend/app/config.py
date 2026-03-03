@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings
@@ -25,6 +26,10 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
 
+    # CORS / Frontend
+    allowed_origins: str = "http://localhost:5173"
+    frontend_url: str = "http://localhost:5173"
+
     # Email polling
     email_poll_interval_minutes: int = 5
 
@@ -42,7 +47,7 @@ class Settings(BaseSettings):
             self.google_client_id = web.get("client_id", self.google_client_id)
             self.google_client_secret = web.get("client_secret", self.google_client_secret)
             redirect_uris = web.get("redirect_uris", [])
-            if redirect_uris:
+            if redirect_uris and "GOOGLE_REDIRECT_URI" not in os.environ:
                 self.google_redirect_uri = redirect_uris[0]
 
 

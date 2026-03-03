@@ -110,7 +110,7 @@ async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
 
     access_token = create_access_token(user.id)
     # Redirect to frontend with token
-    return RedirectResponse(url=f"http://localhost:5173/login?token={access_token}")
+    return RedirectResponse(url=f"{settings.frontend_url}/login?token={access_token}")
 
 
 @router.post("/refresh", response_model=TokenResponse)

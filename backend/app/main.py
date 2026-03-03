@@ -11,6 +11,7 @@ logging.basicConfig(
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import archives, auth, favorites, household, listings, photos, settings as settings_router
+from app.config import settings
 
 
 @asynccontextmanager
@@ -26,7 +27,7 @@ app = FastAPI(title="Nestswipe", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[o.strip() for o in settings.allowed_origins.split(",")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

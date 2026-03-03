@@ -62,6 +62,9 @@ export default function Settings() {
       setApiKey("");
     },
   });
+  const apiKeyError = apiKeyMutation.isError
+    ? (apiKeyMutation.error as any)?.response?.data?.detail ?? "Failed to save API key."
+    : null;
 
   const { data: sentInvites } = useQuery<SentInviteData[]>({
     queryKey: ["sentInvites"],
@@ -160,6 +163,12 @@ export default function Settings() {
             {apiKeyMutation.isPending ? "Saving..." : "Save"}
           </button>
         </div>
+        {apiKeyMutation.isSuccess && !apiKeyError && (
+          <p className="text-xs text-green-600 mt-2">API key saved successfully.</p>
+        )}
+        {apiKeyError && (
+          <p className="text-xs text-red-500 mt-2">{apiKeyError}</p>
+        )}
         {settings?.openai_api_key_set && (
           <button
             onClick={() => apiKeyMutation.mutate("")}
