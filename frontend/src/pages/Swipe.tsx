@@ -153,7 +153,7 @@ function ListingCard({
 export default function Swipe() {
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery<QueueData>({
+  const { data, isLoading, isFetching } = useQuery<QueueData>({
     queryKey: ["queue"],
     queryFn: () => client.get("/listings/queue?limit=10").then((r) => r.data),
   });
@@ -164,29 +164,30 @@ export default function Swipe() {
     onMutate: async ({ id }) => {
       // Cancel in-flight refetches so they don't overwrite our optimistic update
       await queryClient.cancelQueries({ queryKey: ["queue"] });
-      const previous = queryClient.getQueryData<QueueData>(["queue"]);
       // Immediately remove the swiped listing from the cache
       queryClient.setQueryData<QueueData>(["queue"], (old) => {
         if (!old) return old;
         const filtered = old.listings.filter((l) => l.id !== id);
         return { listings: filtered, remaining: Math.max(0, old.remaining - 1) };
       });
-      return { previous };
     },
-    onError: (_err, _vars, context) => {
-      // Roll back on error
-      if (context?.previous) {
-        queryClient.setQueryData(["queue"], context.previous);
-      }
-    },
-    onSettled: () => {
+    onError: () => {
+      // On any error (including 409 already-swiped), just refetch fresh data
       queryClient.invalidateQueries({ queryKey: ["queue"] });
+    },
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["queue-badge"] });
       queryClient.invalidateQueries({ queryKey: ["favorites"] });
+      // Replenish the local queue when it runs low
+      const current = queryClient.getQueryData<QueueData>(["queue"]);
+      if (current && current.listings.length <= 2) {
+        queryClient.invalidateQueries({ queryKey: ["queue"] });
+      }
     },
   });
 
-  const currentListing = data?.listings[0];
+  const listings = data?.listings ?? [];
+  const currentListing = listings[0];
 
   const handleSwipe = useCallback(
     (action: "like" | "pass") => {
@@ -215,6 +216,14 @@ export default function Swipe() {
   }
 
   if (!currentListing) {
+    // Still fetching → show spinner, not "all caught up"
+    if (isFetching) {
+      return (
+        <div className="flex justify-center py-12">
+          <p className="text-gray-500">Loading...</p>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-center justify-center py-12">
         <h2 className="text-xl font-semibold text-gray-900 mb-4">All caught up!</h2>

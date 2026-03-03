@@ -18,10 +18,6 @@ STRIP_PARAMS = {
     "a", "email", "md5",
 }
 
-# Known CDN domains for property photos
-SELOGER_PHOTO_CDNS = ["mms.seloger.com"]
-PAP_PHOTO_CDNS = ["cdn.pap.fr/photos"]
-CI_PHOTO_CDNS = ["media.apimo.pro/cache"]
 
 # Patterns to exclude (logos, icons, tracking pixels, etc.)
 EXCLUDE_PATTERNS = [
@@ -105,14 +101,6 @@ def _is_valid_photo(url: str, source: str) -> bool:
         return False
     if any(p in lower for p in EXCLUDE_PATTERNS):
         return False
-    # Must be from a known CDN for the source
-    cdns = {
-        "seloger": SELOGER_PHOTO_CDNS,
-        "pap": PAP_PHOTO_CDNS,
-        "consultantsimmobilier": CI_PHOTO_CDNS,
-    }.get(source, [])
-    if not any(cdn in lower for cdn in cdns):
-        return False
     return True
 
 
@@ -170,14 +158,18 @@ def _extract_photos_from_html(html: str, source: str) -> list[str]:
             candidate_urls.insert(0, content)
 
     # Filter, deduplicate, normalize
+    # Use the filename (last path segment) as dedup key so different sizes
+    # of the same image (e.g. v.seloger.com/s/crop/48x48/.../HASH.jpg vs
+    # /s/crop/933x645/.../HASH.jpg) are treated as one image.
     for url in candidate_urls:
         if not _is_valid_photo(url, source):
             continue
         normalized = _normalize_photo_url(url)
         base = normalized.split("?")[0]
-        if base in seen_base:
+        filename = base.rsplit("/", 1)[-1]
+        if filename in seen_base:
             continue
-        seen_base.add(base)
+        seen_base.add(filename)
         photos.append(normalized)
 
     return photos[:20]
