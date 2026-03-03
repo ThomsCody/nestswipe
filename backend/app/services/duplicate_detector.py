@@ -24,7 +24,7 @@ def hamming_distance(hash1: str, hash2: str) -> int:
 
 async def find_duplicate(
     db: AsyncSession,
-    household_id: int,
+    user_id: int,
     source: str,
     source_id: str | None,
     external_url: str | None,
@@ -35,7 +35,7 @@ async def find_duplicate(
     if source_id:
         result = await db.execute(
             select(Listing).where(
-                Listing.household_id == household_id,
+                Listing.user_id == user_id,
                 Listing.source == source,
                 Listing.source_id == source_id,
             )
@@ -49,7 +49,7 @@ async def find_duplicate(
         normalized = external_url.rstrip("/").split("?")[0]
         result = await db.execute(
             select(Listing).where(
-                Listing.household_id == household_id,
+                Listing.user_id == user_id,
                 Listing.external_url.ilike(f"%{normalized}%"),
             )
         )
@@ -60,7 +60,7 @@ async def find_duplicate(
     # 3. Fingerprint match
     result = await db.execute(
         select(Listing).where(
-            Listing.household_id == household_id,
+            Listing.user_id == user_id,
             Listing.fingerprint == fingerprint,
         )
     )
@@ -71,7 +71,7 @@ async def find_duplicate(
     # 4. Photo phash match — need 3+ photos with hamming distance ≤ 5
     if len(photo_phashes) >= 3:
         result = await db.execute(
-            select(Listing).where(Listing.household_id == household_id)
+            select(Listing).where(Listing.user_id == user_id)
         )
         candidates = result.scalars().all()
         for candidate in candidates:

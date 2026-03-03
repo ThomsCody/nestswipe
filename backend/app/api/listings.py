@@ -30,7 +30,7 @@ async def get_queue(
 
     # Get unseen listings for this household
     queue_filters = [
-        Listing.household_id == user.household_id,
+        Listing.user_id == user.id,
         Listing.id.notin_(select(swiped_subq)),
         Listing.id.notin_(select(fav_subq)),
         Listing.id.in_(select(has_photos_subq)),
@@ -90,7 +90,7 @@ async def swipe(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Action must be 'like' or 'pass'")
 
     # Verify listing belongs to user's household
-    result = await db.execute(select(Listing).where(Listing.id == listing_id, Listing.household_id == user.household_id))
+    result = await db.execute(select(Listing).where(Listing.id == listing_id, Listing.user_id == user.id))
     listing = result.scalar_one_or_none()
     if not listing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Listing not found")

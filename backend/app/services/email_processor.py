@@ -227,7 +227,7 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
 
                 # Check for duplicates
                 existing = await find_duplicate(
-                    db, user.household_id, source,
+                    db, user.id, source,
                     extracted.source_id, extracted.external_url,
                     fingerprint, photo_phashes,
                 )
@@ -252,6 +252,7 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                 else:
                     listing = Listing(
                         household_id=user.household_id,
+                        user_id=user.id,
                         source=source,
                         source_id=extracted.source_id,
                         external_url=extracted.external_url,

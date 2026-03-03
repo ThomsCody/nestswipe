@@ -11,6 +11,7 @@ class Listing(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     household_id: Mapped[int] = mapped_column(ForeignKey("households.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     source: Mapped[str] = mapped_column(String(50))  # seloger, pap
     source_id: Mapped[str | None] = mapped_column(String(255))
     external_url: Mapped[str | None] = mapped_column(String(1024))

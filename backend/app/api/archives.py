@@ -45,14 +45,16 @@ async def get_archives(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # All user IDs in the household (shared archives)
+    household_user_ids = select(User.id).where(User.household_id == user.household_id)
+
     # Exclude listings already in household favorites
     fav_subq = select(Favorite.listing_id).where(Favorite.household_id == user.household_id).subquery()
 
     base_query = (
         select(SwipeAction)
-        .where(SwipeAction.user_id == user.id, SwipeAction.action == SwipeDirection.pass_)
+        .where(SwipeAction.user_id.in_(household_user_ids), SwipeAction.action == SwipeDirection.pass_)
         .join(Listing, SwipeAction.listing_id == Listing.id)
-        .where(Listing.household_id == user.household_id)
         .where(SwipeAction.listing_id.notin_(select(fav_subq)))
     )
 
@@ -91,15 +93,15 @@ async def get_archive_detail(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    household_user_ids = select(User.id).where(User.household_id == user.household_id)
+
     result = await db.execute(
         select(SwipeAction)
         .where(
-            SwipeAction.user_id == user.id,
+            SwipeAction.user_id.in_(household_user_ids),
             SwipeAction.listing_id == listing_id,
             SwipeAction.action == SwipeDirection.pass_,
         )
-        .join(Listing, SwipeAction.listing_id == Listing.id)
-        .where(Listing.household_id == user.household_id)
         .options(
             selectinload(SwipeAction.listing).selectinload(Listing.photos),
             selectinload(SwipeAction.listing).selectinload(Listing.price_history),
@@ -128,10 +130,12 @@ async def restore_archive(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Find the pass swipe action
+    # Find the pass swipe action (from any household member)
+    household_user_ids = select(User.id).where(User.household_id == user.household_id)
+
     result = await db.execute(
         select(SwipeAction).where(
-            SwipeAction.user_id == user.id,
+            SwipeAction.user_id.in_(household_user_ids),
             SwipeAction.listing_id == listing_id,
             SwipeAction.action == SwipeDirection.pass_,
         )
