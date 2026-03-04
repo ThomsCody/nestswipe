@@ -2,7 +2,7 @@ from pathlib import Path
 
 from app.services.photo_scraper import _is_property_photo, _normalize_url, extract_photos_from_html
 
-SAMPLE_EMAILS_DIR = Path("/Users/thomas.rosenblatt/Perso/rosen_immo/tests/sample_emails")
+SAMPLE_EMAILS_DIR = Path(__file__).resolve().parent.parent.parent / "tests" / "sample_emails"
 
 
 # ---------------------------------------------------------------------------
