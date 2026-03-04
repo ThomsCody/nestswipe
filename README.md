@@ -1,6 +1,17 @@
 # Nestswipe
 
-A web app to find your next apartment. Reads housing offer emails from Gmail (seloger.com, pap.fr), extracts structured listing data using an LLM, and presents listings in a Tinder-style swipe UI. Liked listings go to a shared favorites section where both household members can comment and track price changes.
+A web app to find your next apartment. Reads housing offer emails from Gmail (seloger.com, pap.fr, consultantsimmobilier.com), extracts structured listing data using an LLM, and presents listings in a Tinder-style swipe UI. Liked listings go to a shared favorites section where household members can comment and track price changes.
+
+## Features
+
+- **Email ingestion** — Polls Gmail every 5 minutes for listing alert emails, extracts candidate URLs via GPT-4o-mini
+- **Smart scraping** — Follows tracking URLs with Chrome TLS fingerprint impersonation (curl_cffi), extracts page content
+- **LLM extraction** — Extracts structured data (price, sqm, bedrooms, city, district, etc.) from listing pages using GPT-4o-mini
+- **Photo classification** — Filters out agent portraits, logos, maps, and floor plans using GPT-4o-mini vision
+- **Duplicate detection** — 4-layer dedup: source ID, URL, content fingerprint (SHA256), perceptual image hashing (phash)
+- **Swipe UI** — Tinder-style card swiping to like/pass on listings
+- **Shared favorites** — Household members see the same favorites, can comment and track price history
+- **Household invites** — Invite another user by email to join your household
 
 ## Prerequisites
 
@@ -62,7 +73,7 @@ A web app to find your next apartment. Reads housing offer emails from Gmail (se
 
 6. **Configure your OpenAI API key**
 
-   Navigate to Settings and enter your OpenAI API key. The email processor will start polling your Gmail automatically every 15 minutes.
+   Navigate to Settings and enter your OpenAI API key. The email processor will start polling your Gmail automatically every 5 minutes.
 
 ## Architecture
 
@@ -73,9 +84,25 @@ A web app to find your next apartment. Reads housing offer emails from Gmail (se
 | Backend | Python 3.12 + FastAPI (async) |
 | Database | PostgreSQL 16 + SQLAlchemy 2.0 (async) + Alembic |
 | Photos | MinIO (S3-compatible) |
+| Scraping | curl_cffi (Chrome TLS impersonation) + BeautifulSoup |
 | Email | APScheduler + Gmail API |
-| LLM | OpenAI gpt-4o-mini |
+| LLM | OpenAI GPT-4o-mini (extraction + photo classification) |
 | Auth | Google OAuth 2.0 + JWT |
+| Monitoring | Datadog (APM traces, log correlation, RUM, network monitoring) |
+| CI | GitHub Actions (pytest on push/PR) |
+
+## Testing
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements-test.txt
+pytest -v
+```
+
+63 tests covering API endpoints, service logic (duplicate detection, photo scraping), and the full email processing pipeline with mocked external services.
+
+Tests run automatically on every push/PR to `main` via GitHub Actions.
 
 ## Development
 
@@ -94,6 +121,27 @@ npm run dev
 ```
 
 The Vite dev server proxies `/api/*` to `localhost:8000`.
+
+## Production Deployment
+
+Production runs on an Ubuntu server behind Caddy reverse proxy at `nestswipe.duckdns.org`.
+
+```bash
+# Configure production env
+cp deploy/.env.prod.example deploy/.env
+# Edit deploy/.env with real credentials
+
+# Deploy
+./deploy/deploy.sh
+```
+
+The production stack (`deploy/docker-compose.prod.yml`) includes:
+- **Caddy** — automatic HTTPS reverse proxy
+- **PostgreSQL** — persistent data
+- **MinIO** — photo storage
+- **Backend** — FastAPI with ddtrace APM instrumentation
+- **Frontend** — static build served by Caddy
+- **Datadog Agent** — logs, APM traces, network performance monitoring
 
 ## Rebuilding
 
