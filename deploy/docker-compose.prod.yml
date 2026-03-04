@@ -24,6 +24,7 @@ services:
         VITE_DD_APPLICATION_ID: ${VITE_DD_APPLICATION_ID}
         VITE_DD_CLIENT_TOKEN: ${VITE_DD_CLIENT_TOKEN}
         VITE_DD_SITE: ${VITE_DD_SITE:-datadoghq.com}
+        VITE_DD_ENV: ${VITE_DD_ENV:-prod}
     entrypoint: ["sh", "-c", "cp -r /app/dist/* /output/"]
     volumes:
       - frontend_dist:/output
@@ -76,6 +77,7 @@ services:
       DD_LOGS_INJECTION: "true"
       DD_IAST_ENABLED: "true"
       DD_PROFILING_ENABLED: "true"
+      DD_DYNAMIC_INSTRUMENTATION_ENABLED: "true"
     volumes:
       - ./oauth.json:/app/oauth.json:ro
     depends_on:
