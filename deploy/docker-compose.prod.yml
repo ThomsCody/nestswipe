@@ -75,6 +75,7 @@ services:
       DD_TRACE_ENABLED: "true"
       DD_LOGS_INJECTION: "true"
       DD_IAST_ENABLED: "true"
+      DD_PROFILING_ENABLED: "true"
     volumes:
       - ./oauth.json:/app/oauth.json:ro
     depends_on:
