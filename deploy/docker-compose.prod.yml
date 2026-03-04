@@ -20,6 +20,10 @@ services:
     build:
       context: ../frontend
       target: build
+      args:
+        VITE_DD_APPLICATION_ID: ${VITE_DD_APPLICATION_ID}
+        VITE_DD_CLIENT_TOKEN: ${VITE_DD_CLIENT_TOKEN}
+        VITE_DD_SITE: ${VITE_DD_SITE:-datadoghq.com}
     entrypoint: ["sh", "-c", "cp -r /app/dist/* /output/"]
     volumes:
       - frontend_dist:/output
@@ -63,6 +67,13 @@ services:
       GOOGLE_REDIRECT_URI: https://nestswipe.duckdns.org/api/v1/auth/google/callback
       ALLOWED_ORIGINS: https://nestswipe.duckdns.org
       FRONTEND_URL: https://nestswipe.duckdns.org
+      # Datadog APM
+      DD_AGENT_HOST: datadog-agent
+      DD_SERVICE: nestswipe-backend
+      DD_ENV: production
+      DD_VERSION: ${DD_VERSION:-latest}
+      DD_TRACE_ENABLED: "true"
+      DD_LOGS_INJECTION: "true"
     volumes:
       - ./oauth.json:/app/oauth.json:ro
     depends_on:
@@ -70,6 +81,40 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+    labels:
+      com.datadoghq.ad.logs: '[{"source": "python", "service": "nestswipe-backend"}]'
+    restart: unless-stopped
+
+  datadog-agent:
+    image: gcr.io/datadoghq/agent:7
+    environment:
+      DD_API_KEY: ${DD_API_KEY}
+      DD_SITE: ${DD_SITE:-datadoghq.com}
+      DD_APM_ENABLED: "true"
+      DD_APM_NON_LOCAL_TRAFFIC: "true"
+      DD_LOGS_ENABLED: "true"
+      DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL: "true"
+      DD_DOGSTATSD_NON_LOCAL_TRAFFIC: "true"
+      DD_CONTAINER_EXCLUDE: "name:datadog-agent"
+      # Network Performance Monitoring
+      DD_SYSTEM_PROBE_ENABLED: "true"
+      DD_SYSTEM_PROBE_NETWORK_ENABLED: "true"
+    cap_add:
+      - SYS_ADMIN
+      - SYS_RESOURCE
+      - SYS_PTRACE
+      - NET_ADMIN
+      - NET_BROADCAST
+      - NET_RAW
+      - IPC_LOCK
+      - CHOWN
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
+      - /sys/kernel/debug:/sys/kernel/debug
     restart: unless-stopped
 
 volumes:

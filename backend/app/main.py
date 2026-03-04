@@ -1,6 +1,11 @@
 import logging
 from contextlib import asynccontextmanager
 
+from ddtrace import config, patch_all
+
+config.fastapi["service_name"] = "nestswipe-backend"
+patch_all()
+
 from fastapi import FastAPI
 
 logging.basicConfig(

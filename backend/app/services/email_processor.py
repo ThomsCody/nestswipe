@@ -114,7 +114,7 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
     processed = 0
     try:
         messages = await asyncio.to_thread(_gmail_list_messages, service, query, max_results)
-        logger.info("Found %d email(s) matching query for user %s", len(messages), user.email)
+        logger.info("Gmail query: %s | Found %d email(s) for user %s", query, len(messages), user.email)
 
         for msg_meta in messages:
             msg = await asyncio.to_thread(_gmail_get_message, service, msg_meta["id"])
