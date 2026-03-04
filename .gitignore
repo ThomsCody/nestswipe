@@ -29,6 +29,12 @@ deploy/oauth.json
 *.swp
 *.swo
 
+# Testing
+.pytest_cache/
+
+# TypeScript build info
+tsconfig.tsbuildinfo
+
 # OS
 .DS_Store
 Thumbs.db
