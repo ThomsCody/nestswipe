@@ -71,7 +71,7 @@ services:
       # Datadog APM
       DD_AGENT_HOST: datadog-agent
       DD_SERVICE: nestswipe-backend
-      DD_ENV: production
+      DD_ENV: prod
       DD_VERSION: ${DD_VERSION:-latest}
       DD_TRACE_ENABLED: "true"
       DD_LOGS_INJECTION: "true"
