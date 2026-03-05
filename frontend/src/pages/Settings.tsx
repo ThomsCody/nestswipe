@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import client from "@/api/client";
+import ErrorBox from "@/components/ErrorBox";
 
 interface SettingsData {
   openai_api_key_set: boolean;
@@ -40,7 +41,7 @@ export default function Settings() {
   const [apiKey, setApiKey] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
 
-  const { data: settings, isLoading } = useQuery<SettingsData>({
+  const { data: settings, isLoading, isError, refetch } = useQuery<SettingsData>({
     queryKey: ["settings"],
     queryFn: () => client.get("/settings").then((r) => r.data),
   });
@@ -93,6 +94,7 @@ export default function Settings() {
   });
 
   if (isLoading) return <p className="text-gray-500">Loading...</p>;
+  if (isError) return <ErrorBox message="Could not load settings." onRetry={() => refetch()} />;
 
   return (
     <div className="max-w-lg space-y-6">

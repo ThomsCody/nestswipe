@@ -34,6 +34,7 @@ def _listing_response(listing: Listing) -> ListingResponse:
             PriceHistoryItem(price=ph.price, observed_at=ph.observed_at.isoformat())
             for ph in sorted(listing.price_history, key=lambda ph: ph.observed_at)
         ],
+        last_seen_at=listing.last_seen_at.isoformat() if listing.last_seen_at else None,
     )
 
 

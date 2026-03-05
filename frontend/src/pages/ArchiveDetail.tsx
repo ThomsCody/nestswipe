@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import client from "@/api/client";
 import type { Listing, PriceHistoryEntry } from "@/types";
 import ListingDetailView from "@/components/ListingDetailView";
+import ErrorBox from "@/components/ErrorBox";
 
 interface ArchiveDetailData {
   listing: Listing;
@@ -15,7 +16,7 @@ export default function ArchiveDetail() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery<ArchiveDetailData>({
+  const { data, isLoading, isError, refetch } = useQuery<ArchiveDetailData>({
     queryKey: ["archive", listingId],
     queryFn: () => client.get(`/archives/${listingId}`).then((r) => r.data),
   });
@@ -30,6 +31,7 @@ export default function ArchiveDetail() {
   });
 
   if (isLoading) return <p className="text-gray-500">Loading...</p>;
+  if (isError) return <ErrorBox message="Could not load this listing." onRetry={() => refetch()} />;
   if (!data) return <p className="text-red-500">Archived listing not found.</p>;
 
   return (

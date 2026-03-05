@@ -33,6 +33,7 @@ class ListingResponse(BaseModel):
     external_url: str | None
     photos: list[PhotoResponse]
     price_history: list[PriceHistoryItem] = []
+    last_seen_at: str | None = None
 
     model_config = {"from_attributes": True}
 

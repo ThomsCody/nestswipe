@@ -5,6 +5,7 @@ import client from "@/api/client";
 import { photoUrl } from "@/api/photos";
 import type { Listing } from "@/types";
 import PriceTrend from "@/components/PriceTrend";
+import ErrorBox from "@/components/ErrorBox";
 
 interface ArchiveItem {
   listing: Listing;
@@ -22,7 +23,7 @@ export default function Archives() {
   const queryClient = useQueryClient();
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
+  const { data, isLoading, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useInfiniteQuery<ArchivesData>({
       queryKey: ["archives"],
       queryFn: ({ pageParam }) =>
@@ -66,6 +67,7 @@ export default function Archives() {
   const total = data?.pages[0]?.total ?? 0;
 
   if (isLoading) return <p className="text-gray-500">Loading...</p>;
+  if (isError) return <ErrorBox message="Could not load archives." onRetry={() => refetch()} />;
 
   if (!allItems.length) {
     return (

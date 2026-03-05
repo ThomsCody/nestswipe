@@ -4,6 +4,7 @@ import client from "@/api/client";
 import { photoUrl } from "@/api/photos";
 import type { Listing } from "@/types";
 import PriceTrend from "@/components/PriceTrend";
+import ErrorBox from "@/components/ErrorBox";
 
 interface FavoriteItem {
   id: number;
@@ -19,12 +20,13 @@ interface FavoritesData {
 }
 
 export default function Favorites() {
-  const { data, isLoading } = useQuery<FavoritesData>({
+  const { data, isLoading, isError, refetch } = useQuery<FavoritesData>({
     queryKey: ["favorites"],
     queryFn: () => client.get("/favorites").then((r) => r.data),
   });
 
   if (isLoading) return <p className="text-gray-500">Loading...</p>;
+  if (isError) return <ErrorBox message="Could not load favorites." onRetry={() => refetch()} />;
 
   if (!data?.favorites.length) {
     return (

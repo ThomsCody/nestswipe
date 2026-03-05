@@ -415,6 +415,11 @@ export default function ListingDetailView({
             {[listing.district, listing.city].filter(Boolean).join(", ")}
           </p>
         )}
+        {listing.last_seen_at && (
+          <p className="text-xs text-gray-400 mt-1">
+            Last updated: {new Date(listing.last_seen_at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+          </p>
+        )}
         {listing.description && (
           <p className="text-sm text-gray-600 mt-3">{listing.description}</p>
         )}

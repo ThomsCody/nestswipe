@@ -13,12 +13,13 @@ if (import.meta.env.VITE_DD_APPLICATION_ID && import.meta.env.VITE_DD_CLIENT_TOK
     clientToken: import.meta.env.VITE_DD_CLIENT_TOKEN,
     site: import.meta.env.VITE_DD_SITE || "datadoghq.com",
     service: "nestswipe-frontend",
-    env: "production",
+    env: import.meta.env.VITE_DD_ENV || "prod",
     sessionSampleRate: 100,
     sessionReplaySampleRate: 20,
-    trackUserInteractions: true,
     trackResources: true,
+    trackUserInteractions: true,
     trackLongTasks: true,
+    allowedTracingUrls: [import.meta.env.VITE_DD_ALLOWED_TRACING_URL || "https://nestswipe.duckdns.org"],
     defaultPrivacyLevel: "mask-user-input",
   });
 }
@@ -27,7 +28,16 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 1000 * 60 * 5,
-      retry: 1,
+      retry: (failureCount, error) => {
+        // Don't retry 4xx (client errors) except 408/429
+        const status = (error as any)?.response?.status;
+        if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) {
+          return false;
+        }
+        // Retry 5xx / network errors up to 3 times
+        return failureCount < 3;
+      },
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
     },
   },
 });

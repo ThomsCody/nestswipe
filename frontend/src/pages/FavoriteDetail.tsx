@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import client from "@/api/client";
 import type { Listing, Comment, PriceHistoryEntry } from "@/types";
 import ListingDetailView, { ContactForm, CommentsSection } from "@/components/ListingDetailView";
+import ErrorBox from "@/components/ErrorBox";
 
 interface FavoriteDetailData {
   id: number;
@@ -29,7 +30,7 @@ export default function FavoriteDetail() {
   const [sellerPhone, setSellerPhone] = useState("");
   const [sellerIsAgency, setSellerIsAgency] = useState(false);
 
-  const { data, isLoading } = useQuery<FavoriteDetailData>({
+  const { data, isLoading, isError, refetch } = useQuery<FavoriteDetailData>({
     queryKey: ["favorite", id],
     queryFn: () => client.get(`/favorites/${id}`).then((r) => r.data),
   });
@@ -86,6 +87,7 @@ export default function FavoriteDetail() {
   });
 
   if (isLoading) return <p className="text-gray-500">Loading...</p>;
+  if (isError) return <ErrorBox message="Could not load this favorite." onRetry={() => refetch()} />;
   if (!data) return <p className="text-red-500">Favorite not found.</p>;
 
   return (

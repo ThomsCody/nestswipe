@@ -23,6 +23,7 @@ export interface Listing {
   external_url?: string;
   photos: ListingPhoto[];
   price_history?: PriceHistoryEntry[];
+  last_seen_at?: string;
 }
 
 export interface ListingPhoto {

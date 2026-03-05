@@ -4,6 +4,7 @@ import client from "@/api/client";
 import { photoUrl } from "@/api/photos";
 import type { Listing } from "@/types";
 import PriceTrend from "@/components/PriceTrend";
+import ErrorBox from "@/components/ErrorBox";
 
 interface QueueData {
   listings: Listing[];
@@ -153,7 +154,7 @@ function ListingCard({
 export default function Swipe() {
   const queryClient = useQueryClient();
 
-  const { data, isLoading, isFetching } = useQuery<QueueData>({
+  const { data, isLoading, isFetching, isError, refetch } = useQuery<QueueData>({
     queryKey: ["queue"],
     queryFn: () => client.get("/listings/queue?limit=10").then((r) => r.data),
   });
@@ -211,6 +212,14 @@ export default function Swipe() {
     return (
       <div className="flex justify-center py-12">
         <p className="text-gray-500">Loading...</p>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex justify-center py-12">
+        <ErrorBox message="Could not load listings." onRetry={() => refetch()} />
       </div>
     );
   }

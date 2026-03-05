@@ -72,6 +72,7 @@ async def get_queue(
                     PriceHistoryItem(price=ph.price, observed_at=ph.observed_at.isoformat())
                     for ph in sorted(l.price_history, key=lambda ph: ph.observed_at)
                 ],
+                last_seen_at=l.last_seen_at.isoformat() if l.last_seen_at else None,
             )
             for l in listings
         ],
