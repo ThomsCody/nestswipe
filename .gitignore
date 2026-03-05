@@ -52,3 +52,4 @@ infra/*.tfstate
 infra/*.tfstate.*
 infra/*.tfvars
 infra/.terraform.lock.hcl
+deploy/setup-secrets.sh
