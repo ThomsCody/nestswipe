@@ -106,6 +106,10 @@ def _is_valid_photo(url: str, source: str) -> bool:
 
 def _normalize_photo_url(url: str) -> str:
     """Remove size constraints from URLs to get higher resolution images."""
+    # SeLoger: replace /s/crop/NNNxNNN/ or /s/width/NNN/ with high-res variant
+    url = re.sub(r"/s/crop/\d+x\d+/", "/s/width/1280/", url)
+    url = re.sub(r"/s/width/\d+/", "/s/width/1280/", url)
+    # Remove h=xxx&w=xxx query params
     url = re.sub(r"[&?]h=\d+", "", url)
     url = re.sub(r"[&?]w=\d+", "", url)
     url = re.sub(r"&&+", "&", url)
