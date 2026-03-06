@@ -1,8 +1,12 @@
-.PHONY: test up down build migrate logs
+.PHONY: test test-frontend up down build migrate logs
 
 # Run backend tests inside the container
 test:
 	docker compose --env-file deploy/.env exec -T backend python -m pytest tests/ -v --tb=short
+
+# Run frontend tests locally
+test-frontend:
+	cd frontend && npx vitest run
 
 # Start all services
 up:
