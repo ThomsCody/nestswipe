@@ -14,6 +14,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    labels:
+      com.datadoghq.ad.logs: '[{"source": "postgresql", "service": "nestswipe-db"}]'
 
   minio:
     image: minio/minio
@@ -32,7 +34,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://rosen:rosen_secret@postgres:5432/nestswipe}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-rosen}:${POSTGRES_PASSWORD:-rosen_secret}@postgres:5432/${POSTGRES_DB:-nestswipe}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
@@ -77,6 +79,7 @@ services:
     environment:
       DD_API_KEY: ${DD_API_KEY}
       DD_SITE: ${DD_SITE:-datadoghq.com}
+      DD_HOSTNAME: ${DD_HOSTNAME:-nestswipe-local}
       DD_APM_ENABLED: "true"
       DD_APM_NON_LOCAL_TRAFFIC: "true"
       DD_LOGS_ENABLED: "true"

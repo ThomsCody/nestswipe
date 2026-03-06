@@ -7,6 +7,11 @@ import { AuthProvider } from "@/context/AuthContext";
 import App from "./App";
 import "./index.css";
 
+if (import.meta.env.VITE_DD_ENV === "dev") {
+  const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+  if (link) link.href = "/favicon-dev.svg";
+}
+
 if (import.meta.env.VITE_DD_APPLICATION_ID && import.meta.env.VITE_DD_CLIENT_TOKEN) {
   datadogRum.init({
     applicationId: import.meta.env.VITE_DD_APPLICATION_ID,

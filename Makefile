@@ -16,9 +16,9 @@ down:
 build:
 	docker compose --env-file deploy/.env up -d --build
 
-# Run database migrations
+# Run database migrations (uses 'run' so it works even if backend is stopped)
 migrate:
-	docker compose --env-file deploy/.env exec backend alembic upgrade head
+	docker compose --env-file deploy/.env run --rm -T backend alembic upgrade head
 
 # Tail logs
 logs:

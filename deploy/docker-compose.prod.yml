@@ -43,6 +43,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    labels:
+      com.datadoghq.ad.logs: '[{"source": "postgresql", "service": "nestswipe-db"}]'
     restart: unless-stopped
 
   minio:
