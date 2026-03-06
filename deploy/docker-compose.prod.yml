@@ -25,6 +25,7 @@ services:
         VITE_DD_CLIENT_TOKEN: ${VITE_DD_CLIENT_TOKEN}
         VITE_DD_SITE: ${VITE_DD_SITE:-datadoghq.com}
         VITE_DD_ENV: ${VITE_DD_ENV:-prod}
+        VITE_DD_ALLOWED_TRACING_URL: ${VITE_DD_ALLOWED_TRACING_URL:-https://nestswipe.duckdns.org}
     entrypoint: ["sh", "-c", "cp -r /app/dist/* /output/"]
     volumes:
       - frontend_dist:/output

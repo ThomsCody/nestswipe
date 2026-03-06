@@ -19,7 +19,7 @@ if (import.meta.env.VITE_DD_APPLICATION_ID && import.meta.env.VITE_DD_CLIENT_TOK
     trackResources: true,
     trackUserInteractions: true,
     trackLongTasks: true,
-    allowedTracingUrls: [import.meta.env.VITE_DD_ALLOWED_TRACING_URL || "https://nestswipe.duckdns.org"],
+    allowedTracingUrls: import.meta.env.VITE_DD_ALLOWED_TRACING_URL ? [import.meta.env.VITE_DD_ALLOWED_TRACING_URL] : [],
     defaultPrivacyLevel: "mask-user-input",
   });
 }

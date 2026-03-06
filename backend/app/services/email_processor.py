@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.listing import Listing, ListingPhoto, PriceHistory
 from app.models.user import User
-from app.services.browser_scraper import scrape_listing
+from app.services.browser_scraper import scrape_listing, MAX_PHOTOS_PER_LISTING
 from app.services.duplicate_detector import compute_fingerprint, find_duplicate
 from app.services.email_url_extractor import extract_listing_urls
 from app.services.llm_extractor import extract_listing_from_page
@@ -207,7 +207,7 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                 # Download photos and compute phashes
                 photo_data: list[tuple[bytes, str | None, str]] = []
                 photo_phashes: list[str] = []
-                for photo_url in photo_urls[:15]:
+                for photo_url in photo_urls[:MAX_PHOTOS_PER_LISTING]:
                     img_bytes = await download_photo(photo_url)
                     if img_bytes:
                         phash = compute_phash(img_bytes)

@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 PROXY_SOURCES = {"seloger"}
 
 REQUEST_TIMEOUT = 30
+MAX_PHOTOS_PER_LISTING = 30
 
 # Tracking / UTM params to strip from final URLs
 STRIP_PARAMS = {
@@ -177,6 +178,19 @@ def _extract_photos_from_html(html: str, source: str) -> list[str]:
         if content:
             candidate_urls.insert(0, content)
 
+    # Inline JSON/JS data — SeLoger embeds a full photo gallery in a script
+    # tag with double-escaped JSON (\" becomes \\").  Extract image URLs
+    # regardless of escaping style.
+    for script in soup.find_all("script"):
+        text = script.string or ""
+        if "mms.seloger" not in text:
+            continue
+        for m in re.finditer(
+            r"https?://mms\.seloger\.com/[^\"\s\\]+\.(?:jpe?g|png|webp)[^\"\s\\]*",
+            text,
+        ):
+            candidate_urls.append(m.group(0))
+
     # Filter, deduplicate, normalize
     # Use the filename (last path segment) as dedup key so different sizes
     # of the same image (e.g. v.seloger.com/s/crop/48x48/.../HASH.jpg vs
@@ -192,7 +206,7 @@ def _extract_photos_from_html(html: str, source: str) -> list[str]:
         seen_base.add(filename)
         photos.append(normalized)
 
-    return photos[:20]
+    return photos[:MAX_PHOTOS_PER_LISTING]
 
 
 def _extract_page_text(html: str) -> str | None:

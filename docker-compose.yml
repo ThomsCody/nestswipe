@@ -42,6 +42,12 @@ services:
       PROXY_HOST: ${PROXY_HOST:-}
       PROXY_USER: ${PROXY_USER:-}
       PROXY_PASSWORD: ${PROXY_PASSWORD:-}
+      # Datadog APM
+      DD_AGENT_HOST: datadog-agent
+      DD_SERVICE: nestswipe-backend
+      DD_ENV: dev
+      DD_TRACE_ENABLED: "true"
+      DD_LOGS_INJECTION: "true"
     volumes:
       - ./oauth.json:/app/oauth.json:ro
     depends_on:
@@ -49,13 +55,36 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+    labels:
+      com.datadoghq.ad.logs: '[{"source": "python", "service": "nestswipe-backend"}]'
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_DD_APPLICATION_ID: ${VITE_DD_APPLICATION_ID:-}
+        VITE_DD_CLIENT_TOKEN: ${VITE_DD_CLIENT_TOKEN:-}
+        VITE_DD_SITE: ${VITE_DD_SITE:-datadoghq.com}
+        VITE_DD_ENV: ${VITE_DD_ENV:-dev}
+        VITE_DD_ALLOWED_TRACING_URL: ${VITE_DD_ALLOWED_TRACING_URL:-http://localhost:8000}
     ports:
       - "5173:80"
     depends_on:
       - backend
+
+  datadog-agent:
+    image: gcr.io/datadoghq/agent:7
+    environment:
+      DD_API_KEY: ${DD_API_KEY}
+      DD_SITE: ${DD_SITE:-datadoghq.com}
+      DD_APM_ENABLED: "true"
+      DD_APM_NON_LOCAL_TRAFFIC: "true"
+      DD_LOGS_ENABLED: "true"
+      DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL: "true"
+      DD_DOGSTATSD_NON_LOCAL_TRAFFIC: "true"
+      DD_CONTAINER_EXCLUDE: "name:datadog-agent"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
 
 volumes:
   pgdata:
