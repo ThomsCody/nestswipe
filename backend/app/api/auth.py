@@ -1,8 +1,11 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
+
+logger = logging.getLogger(__name__)
 from fastapi.responses import RedirectResponse
 from jose import jwt
 from sqlalchemy import select
@@ -73,6 +76,11 @@ async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
         if userinfo_resp.status_code != 200:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to get user info")
         userinfo = userinfo_resp.json()
+
+    # Verify gmail.readonly was granted
+    granted_scopes = tokens.get("scope", "")
+    if "gmail.readonly" not in granted_scopes:
+        logger.warning("Gmail readonly scope not granted. Granted: %s", granted_scopes)
 
     google_id = userinfo["id"]
     email = userinfo["email"]

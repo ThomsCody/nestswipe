@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import client from "@/api/client";
 import { photoUrl } from "@/api/photos";
 import type { Listing } from "@/types";
 import PriceTrend from "@/components/PriceTrend";
 import ErrorBox from "@/components/ErrorBox";
+
+interface UserStatus {
+  has_api_key: boolean;
+  has_gmail_token: boolean;
+}
 
 interface QueueData {
   listings: Listing[];
@@ -178,6 +184,12 @@ export default function Swipe() {
     queryFn: () => client.get("/listings/queue?limit=10").then((r) => r.data),
   });
 
+  const { data: userStatus } = useQuery<UserStatus>({
+    queryKey: ["user-status"],
+    queryFn: () => client.get("/auth/me").then((r) => r.data),
+    staleTime: Infinity,
+  });
+
   const swipeMutation = useMutation({
     mutationFn: ({ id, action }: { id: number; action: string }) =>
       client.post(`/listings/${id}/swipe`, { action }),
@@ -252,12 +264,27 @@ export default function Swipe() {
         </div>
       );
     }
+    const missingSetup = userStatus && (!userStatus.has_api_key || !userStatus.has_gmail_token);
     return (
       <div className="flex flex-col items-center justify-center py-12">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">All caught up!</h2>
-        <p className="text-gray-500">
-          No new listings to review. Configure your API key in Settings and wait for the next email poll.
-        </p>
+        {missingSetup ? (
+          <>
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Setup needed</h2>
+            <div className="text-gray-500 text-center space-y-1">
+              {!userStatus.has_gmail_token && <p>Gmail is not connected &mdash; sign in again to grant email access.</p>}
+              {!userStatus.has_api_key && (
+                <p>
+                  OpenAI API key missing &mdash; <Link to="/settings" className="text-indigo-600 hover:underline">configure it in Settings</Link>.
+                </p>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">All caught up!</h2>
+            <p className="text-gray-500">No new listings to review. Check back after the next email poll.</p>
+          </>
+        )}
       </div>
     );
   }
