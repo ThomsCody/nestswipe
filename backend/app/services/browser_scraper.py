@@ -6,7 +6,12 @@ from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from bs4 import BeautifulSoup
 from curl_cffi.requests import AsyncSession
 
+from app.config import settings
+
 logger = logging.getLogger(__name__)
+
+# Sources that require proxy to bypass bot protection
+PROXY_SOURCES = {"seloger"}
 
 REQUEST_TIMEOUT = 30
 
@@ -212,8 +217,13 @@ async def scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
     """
     result = ScrapedListing()
 
+    use_proxy = source in PROXY_SOURCES and settings.proxy_url
+    proxy = settings.proxy_url if use_proxy else None
+    if use_proxy:
+        logger.info("Using residential proxy for source=%s", source)
+
     try:
-        async with AsyncSession(impersonate="chrome") as session:
+        async with AsyncSession(impersonate="chrome", proxy=proxy) as session:
             # Warm up: visit the homepage to establish cookies/trust score
             warmup_url = WARMUP_URLS.get(source)
             if warmup_url:

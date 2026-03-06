@@ -29,8 +29,6 @@ A web app to find your next apartment. Reads housing offer emails from Gmail (se
 
    ```bash
    git clone <repo-url> && cd nestswipe
-   cp .env.example .env
-   # Edit .env if needed (defaults work for local development)
    ```
 
 2. **Google OAuth credentials**
@@ -49,31 +47,94 @@ A web app to find your next apartment. Reads housing offer emails from Gmail (se
    }
    ```
 
-3. **Start services**
+3. **Environment variables**
 
    ```bash
-   docker compose up -d
+   cp deploy/.env.prod.example deploy/.env
+   # Edit deploy/.env with real credentials
    ```
 
-   This starts:
-   - PostgreSQL (`:5432`)
-   - MinIO (`:9000` API, `:9001` console)
-   - Backend / FastAPI (`:8000`)
-   - Frontend / nginx (`:5173`)
+   The `deploy/.env` file is used by both local and production stacks. See `.env.example` for a description of all variables and their defaults.
 
-4. **Run database migrations**
+## Running locally
+
+```bash
+docker compose --env-file deploy/.env up -d
+```
+
+This starts:
+- **PostgreSQL** (`:5432`)
+- **MinIO** (`:9000` API, `:9001` console)
+- **Backend / FastAPI** (`:8000`)
+- **Frontend / nginx** (`:5173`)
+
+Run database migrations on first start (or after schema changes):
+
+```bash
+docker compose exec backend alembic upgrade head
+```
+
+Open [http://localhost:5173](http://localhost:5173) and sign in with Google. Then go to Settings and enter your OpenAI API key — the email processor will start polling your Gmail automatically every 5 minutes.
+
+### Rebuilding after code changes
+
+```bash
+docker compose --env-file deploy/.env build && docker compose --env-file deploy/.env up -d
+```
+
+### Running without Docker
+
+**Backend:**
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+
+**Frontend** (with hot reload):
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The Vite dev server proxies `/api/*` to `localhost:8000`.
+
+## Production deployment
+
+Production runs on an Ubuntu server behind a Caddy reverse proxy with automatic HTTPS.
+
+1. **First-time setup on the server:** create `deploy/.env` and `deploy/oauth.json` with production credentials (these files are excluded from rsync).
+
+2. **Deploy from your machine:**
 
    ```bash
-   docker compose exec backend alembic upgrade head
+   ./deploy/deploy.sh
    ```
 
-5. **Open the app**
+   This syncs the code to the server, builds containers, runs migrations, and starts all services.
 
-   Go to [http://localhost:5173](http://localhost:5173) and sign in with Google.
+The production stack (`deploy/docker-compose.prod.yml`) includes:
+- **Caddy** — automatic HTTPS reverse proxy
+- **PostgreSQL** — persistent data
+- **MinIO** — photo storage
+- **Backend** — FastAPI with ddtrace APM instrumentation
+- **Frontend** — static build served by Caddy
+- **Datadog Agent** — logs, APM traces, network performance monitoring
 
-6. **Configure your OpenAI API key**
+## Proxy configuration (optional)
 
-   Navigate to Settings and enter your OpenAI API key. The email processor will start polling your Gmail automatically every 5 minutes.
+Seloger.com uses Datadome bot protection which blocks direct scraping. A rotating residential proxy (e.g. [Decodo](https://decodo.com)) can be configured to bypass this. Set these in `deploy/.env`:
+
+```
+PROXY_HOST=gate.decodo.com:7777
+PROXY_USER=your_username
+PROXY_PASSWORD=your_password
+```
+
+When configured, the proxy is used **only** for HTML fetching on seloger.com — other sources (pap.fr, etc.) and photo downloads always use direct connections to save bandwidth.
+
+If these variables are not set, the scraper falls back to direct connections (seloger may return blocks/CAPTCHAs).
 
 ## Architecture
 
@@ -85,6 +146,7 @@ A web app to find your next apartment. Reads housing offer emails from Gmail (se
 | Database | PostgreSQL 16 + SQLAlchemy 2.0 (async) + Alembic |
 | Photos | MinIO (S3-compatible) |
 | Scraping | curl_cffi (Chrome TLS impersonation) + BeautifulSoup |
+| Proxy | Rotating residential proxy (Decodo) for Datadome bypass |
 | Email | APScheduler + Gmail API |
 | LLM | OpenAI GPT-4o-mini (extraction + photo classification) |
 | Auth | Google OAuth 2.0 + JWT |
@@ -103,48 +165,3 @@ pytest -v
 63 tests covering API endpoints, service logic (duplicate detection, photo scraping), and the full email processing pipeline with mocked external services.
 
 Tests run automatically on every push/PR to `main` via GitHub Actions.
-
-## Development
-
-**Backend only** (for local dev without Docker):
-```bash
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
-```
-
-**Frontend only** (with hot reload):
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-The Vite dev server proxies `/api/*` to `localhost:8000`.
-
-## Production Deployment
-
-Production runs on an Ubuntu server behind Caddy reverse proxy at `nestswipe.duckdns.org`.
-
-```bash
-# Configure production env
-cp deploy/.env.prod.example deploy/.env
-# Edit deploy/.env with real credentials
-
-# Deploy
-./deploy/deploy.sh
-```
-
-The production stack (`deploy/docker-compose.prod.yml`) includes:
-- **Caddy** — automatic HTTPS reverse proxy
-- **PostgreSQL** — persistent data
-- **MinIO** — photo storage
-- **Backend** — FastAPI with ddtrace APM instrumentation
-- **Frontend** — static build served by Caddy
-- **Datadog Agent** — logs, APM traces, network performance monitoring
-
-## Rebuilding
-
-```bash
-docker compose build && docker compose up -d
-```

@@ -30,6 +30,17 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:5173"
     frontend_url: str = "http://localhost:5173"
 
+    # Proxy (rotating residential, used for seloger.com only)
+    proxy_host: str = ""
+    proxy_user: str = ""
+    proxy_password: str = ""
+
+    @property
+    def proxy_url(self) -> str:
+        if self.proxy_host and self.proxy_user and self.proxy_password:
+            return f"http://{self.proxy_user}:{self.proxy_password}@{self.proxy_host}"
+        return ""
+
     # Email polling
     email_poll_interval_minutes: int = 5
 
