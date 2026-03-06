@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import client from "@/api/client";
 import { photoUrl } from "@/api/photos";
@@ -13,6 +13,7 @@ interface QueueData {
 
 function PhotoCarousel({ photos }: { photos: Listing["photos"] }) {
   const [index, setIndex] = useState(0);
+  const touchStartX = useRef<number | null>(null);
 
   if (photos.length === 0) {
     return (
@@ -22,8 +23,26 @@ function PhotoCarousel({ photos }: { photos: Listing["photos"] }) {
     );
   }
 
+  const onTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0]!.clientX;
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const dx = e.changedTouches[0]!.clientX - touchStartX.current;
+    if (Math.abs(dx) > 50) {
+      dx < 0
+        ? setIndex((i) => (i < photos.length - 1 ? i + 1 : 0))
+        : setIndex((i) => (i > 0 ? i - 1 : photos.length - 1));
+    }
+    touchStartX.current = null;
+  };
+
   return (
-    <div className="relative w-full h-72 bg-gray-900 overflow-hidden">
+    <div
+      className="relative w-full h-72 bg-gray-900 overflow-hidden"
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+    >
       <img
         src={photoUrl(photos[index]!.s3_key)}
         alt=""

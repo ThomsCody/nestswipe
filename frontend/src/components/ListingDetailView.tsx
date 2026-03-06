@@ -115,19 +115,60 @@ function Lightbox({
 function Gallery({ photos }: { photos: Listing["photos"] }) {
   const [selected, setSelected] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const touchStartX = useRef<number | null>(null);
   if (!photos.length) return null;
+
+  const goPrev = () => setSelected((i) => (i - 1 + photos.length) % photos.length);
+  const goNext = () => setSelected((i) => (i + 1) % photos.length);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0]!.clientX;
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const dx = e.changedTouches[0]!.clientX - touchStartX.current;
+    if (Math.abs(dx) > 50) {
+      dx < 0 ? goNext() : goPrev();
+    }
+    touchStartX.current = null;
+  };
 
   return (
     <div>
       <div
-        className="h-72 bg-gray-900 rounded-lg overflow-hidden mb-2 cursor-pointer"
+        className="relative h-72 bg-gray-900 rounded-lg overflow-hidden mb-2 cursor-pointer"
         onClick={() => setLightboxOpen(true)}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
       >
         <img
           src={photoUrl(photos[selected]!.s3_key)}
           alt=""
           className="w-full h-full object-contain"
         />
+        {photos.length > 1 && (
+          <>
+            <button
+              onClick={(e) => { e.stopPropagation(); goPrev(); }}
+              className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-black/70"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); goNext(); }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-black/70"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+            <span className="absolute bottom-2 left-1/2 -translate-x-1/2 text-white/70 text-xs bg-black/50 px-2 py-0.5 rounded-full">
+              {selected + 1} / {photos.length}
+            </span>
+          </>
+        )}
       </div>
       {photos.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-2">
