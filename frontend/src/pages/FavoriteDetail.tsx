@@ -106,7 +106,7 @@ export default function FavoriteDetail() {
   const deleteCommentMutation = useMutation({
     mutationFn: (commentId: number) => client.delete(`/favorites/${id}/comments/${commentId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["favorite", id] });
+      refetch();
       queryClient.invalidateQueries({ queryKey: ["favorites"] });
     },
   });

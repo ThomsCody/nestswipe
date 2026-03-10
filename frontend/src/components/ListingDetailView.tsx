@@ -457,12 +457,14 @@ function CommentsSection({ comments, onAdd, onDelete, isAdding, householdMembers
                   {new Date(c.created_at).toLocaleString("fr-FR")}
                 </span>
               </div>
-              <button
-                onClick={() => onDelete(c.id)}
-                className="text-xs text-red-400 hover:text-red-600"
-              >
-                Delete
-              </button>
+              {currentUserId === c.user_id && (
+                <button
+                  onClick={() => onDelete(c.id)}
+                  className="text-xs text-red-400 hover:text-red-600"
+                >
+                  Delete
+                </button>
+              )}
             </div>
             <HighlightedBody body={c.body} />
           </div>
