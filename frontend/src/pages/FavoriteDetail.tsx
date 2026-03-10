@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import client from "@/api/client";
 import type { Listing, Comment, PriceHistoryEntry } from "@/types";
 import ListingDetailView, { ContactForm, CommentsSection } from "@/components/ListingDetailView";
+import type { HouseholdMember } from "@/components/ListingDetailView";
 import ErrorBox from "@/components/ErrorBox";
 
 interface FavoriteDetailData {
@@ -17,6 +18,17 @@ interface FavoriteDetailData {
   seller_phone: string | null;
   seller_is_agency: boolean | null;
   created_at: string;
+}
+
+interface HouseholdData {
+  id: number;
+  name: string;
+  members: HouseholdMember[];
+}
+
+interface UserInfo {
+  id: number;
+  name: string;
 }
 
 export default function FavoriteDetail() {
@@ -33,6 +45,18 @@ export default function FavoriteDetail() {
   const { data, isLoading, isError, refetch } = useQuery<FavoriteDetailData>({
     queryKey: ["favorite", id],
     queryFn: () => client.get(`/favorites/${id}`).then((r) => r.data),
+  });
+
+  const { data: household } = useQuery<HouseholdData>({
+    queryKey: ["household"],
+    queryFn: () => client.get("/household").then((r) => r.data),
+    staleTime: 60_000,
+  });
+
+  const { data: userInfo } = useQuery<UserInfo>({
+    queryKey: ["auth-me"],
+    queryFn: () => client.get("/auth/me").then((r) => r.data),
+    staleTime: Infinity,
   });
 
   useEffect(() => {
@@ -75,6 +99,7 @@ export default function FavoriteDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["favorite", id] });
       queryClient.invalidateQueries({ queryKey: ["favorites"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications-count"] });
     },
   });
 
@@ -127,6 +152,8 @@ export default function FavoriteDetail() {
           onAdd={(body) => commentMutation.mutate(body)}
           onDelete={(commentId) => deleteCommentMutation.mutate(commentId)}
           isAdding={commentMutation.isPending}
+          householdMembers={household?.members}
+          currentUserId={userInfo?.id}
         />
       }
       bottomAction={

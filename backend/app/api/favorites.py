@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -9,7 +10,8 @@ from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.interaction import Comment, Favorite
 from app.models.listing import Listing
-from app.models.user import User
+from app.models.notification import Notification
+from app.models.user import Household, User
 from app.schemas.favorite import (
     CommentCreateRequest,
     CommentResponse,
@@ -236,6 +238,26 @@ async def add_comment(
 
     comment = Comment(favorite_id=fav.id, user_id=user.id, body=body.body)
     db.add(comment)
+    await db.flush()
+
+    # Parse @mentions and create notifications for household members
+    mentioned_names = set(re.findall(r"@(\w+)", body.body))
+    if mentioned_names:
+        hh_result = await db.execute(
+            select(Household).options(selectinload(Household.members)).where(Household.id == user.household_id)
+        )
+        household = hh_result.scalar_one()
+        for member in household.members:
+            if member.id == user.id:
+                continue
+            first_name = member.name.split()[0] if member.name else ""
+            if any(first_name.lower() == name.lower() for name in mentioned_names):
+                db.add(Notification(
+                    user_id=member.id,
+                    comment_id=comment.id,
+                    favorite_id=fav.id,
+                ))
+
     await db.commit()
     await db.refresh(comment)
 

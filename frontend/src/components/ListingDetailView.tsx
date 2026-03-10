@@ -330,24 +330,116 @@ function ContactForm(props: ContactFormProps) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Highlighted comment body (renders @mentions with styling)          */
+/* ------------------------------------------------------------------ */
+
+function HighlightedBody({ body }: { body: string }) {
+  const parts = body.split(/(@\w+)/g);
+  return (
+    <p className="text-sm text-gray-700 mt-1">
+      {parts.map((part, i) =>
+        /^@\w+$/.test(part) ? (
+          <span key={i} className="text-indigo-600 font-medium">{part}</span>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </p>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Comments section (only shown for favorites)                       */
 /* ------------------------------------------------------------------ */
+
+export interface HouseholdMember {
+  id: number;
+  name: string;
+}
 
 interface CommentsSectionProps {
   comments: Comment[];
   onAdd: (body: string) => void;
   onDelete: (commentId: number) => void;
   isAdding: boolean;
+  householdMembers?: HouseholdMember[];
+  currentUserId?: number;
 }
 
-function CommentsSection({ comments, onAdd, onDelete, isAdding }: CommentsSectionProps) {
+function CommentsSection({ comments, onAdd, onDelete, isAdding, householdMembers, currentUserId }: CommentsSectionProps) {
   const [comment, setComment] = useState("");
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const otherMembers = (householdMembers ?? []).filter((m) => m.id !== currentUserId);
+
+  const filteredMembers = mentionQuery !== null
+    ? otherMembers.filter((m) => {
+        const firstName = m.name.split(" ")[0]!.toLowerCase();
+        return firstName.startsWith(mentionQuery.toLowerCase());
+      })
+    : [];
 
   const submit = () => {
     if (comment.trim()) {
       onAdd(comment.trim());
       setComment("");
+      setMentionQuery(null);
     }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setComment(val);
+
+    // Detect @mention in progress
+    const cursorPos = e.target.selectionStart ?? val.length;
+    const textBeforeCursor = val.slice(0, cursorPos);
+    const match = textBeforeCursor.match(/@(\w*)$/);
+    if (match) {
+      setMentionQuery(match[1]!);
+      setMentionIndex(0);
+    } else {
+      setMentionQuery(null);
+    }
+  };
+
+  const insertMention = (member: HouseholdMember) => {
+    const firstName = member.name.split(" ")[0]!;
+    const cursorPos = inputRef.current?.selectionStart ?? comment.length;
+    const textBeforeCursor = comment.slice(0, cursorPos);
+    const textAfterCursor = comment.slice(cursorPos);
+    const beforeAt = textBeforeCursor.replace(/@\w*$/, "");
+    const newVal = `${beforeAt}@${firstName} ${textAfterCursor}`;
+    setComment(newVal);
+    setMentionQuery(null);
+    inputRef.current?.focus();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (mentionQuery !== null && filteredMembers.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionIndex((i) => Math.min(i + 1, filteredMembers.length - 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIndex((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        insertMention(filteredMembers[mentionIndex]!);
+        return;
+      }
+      if (e.key === "Escape") {
+        setMentionQuery(null);
+        return;
+      }
+    }
+    if (e.key === "Enter" && comment.trim()) submit();
   };
 
   return (
@@ -372,20 +464,41 @@ function CommentsSection({ comments, onAdd, onDelete, isAdding }: CommentsSectio
                 Delete
               </button>
             </div>
-            <p className="text-sm text-gray-700 mt-1">{c.body}</p>
+            <HighlightedBody body={c.body} />
           </div>
         ))}
       </div>
-      <div className="flex gap-2 mt-3">
-        <input
-          value={comment}
-          onChange={(e) => setComment(e.target.value)}
-          placeholder="Add a comment..."
-          className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && comment.trim()) submit();
-          }}
-        />
+      <div className="relative flex gap-2 mt-3">
+        <div className="relative flex-1">
+          <input
+            ref={inputRef}
+            value={comment}
+            onChange={handleChange}
+            placeholder="Add a comment... (use @ to mention)"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+            onKeyDown={handleKeyDown}
+            onBlur={() => {
+              // Delay to allow click on dropdown
+              setTimeout(() => setMentionQuery(null), 150);
+            }}
+          />
+          {mentionQuery !== null && filteredMembers.length > 0 && (
+            <div className="absolute bottom-full mb-1 left-0 w-full bg-white rounded-md shadow-lg border border-gray-200 z-10 max-h-32 overflow-y-auto">
+              {filteredMembers.map((m, i) => (
+                <button
+                  key={m.id}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => insertMention(m)}
+                  className={`w-full text-left px-3 py-1.5 text-sm ${
+                    i === mentionIndex ? "bg-indigo-50 text-indigo-700" : "text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  {m.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <button
           onClick={submit}
           disabled={!comment.trim() || isAdding}

@@ -51,3 +51,13 @@ export interface PriceHistoryEntry {
   price: number;
   observed_at: string;
 }
+
+export interface Notification {
+  id: number;
+  comment_body: string;
+  commenter_name: string;
+  favorite_id: number;
+  listing_title: string;
+  created_at: string;
+  is_read: boolean;
+}

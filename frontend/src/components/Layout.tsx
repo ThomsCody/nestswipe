@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Outlet, Link, useLocation } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import client from "@/api/client";
+import type { Notification } from "@/types";
 
 const NAV_ITEMS = [
   { to: "/swipe", label: "Swipe" },
@@ -10,6 +11,129 @@ const NAV_ITEMS = [
   { to: "/archives", label: "Archives" },
   { to: "/settings", label: "Settings" },
 ];
+
+function timeAgo(dateStr: string): string {
+  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function NotificationBell() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const { data: countData } = useQuery<{ unread: number }>({
+    queryKey: ["notifications-count"],
+    queryFn: () => client.get("/notifications/count").then((r) => r.data),
+    refetchInterval: 10_000,
+  });
+
+  const { data: notifications, refetch } = useQuery<Notification[]>({
+    queryKey: ["notifications"],
+    queryFn: () => client.get("/notifications").then((r) => r.data),
+    enabled: open,
+  });
+
+  const markReadMutation = useMutation({
+    mutationFn: (id: number) => client.post(`/notifications/${id}/read`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications-count"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
+
+  const markAllReadMutation = useMutation({
+    mutationFn: () => client.post("/notifications/read-all"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications-count"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    if (open) document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  // Refetch notifications when opening
+  useEffect(() => {
+    if (open) refetch();
+  }, [open, refetch]);
+
+  const unread = countData?.unread ?? 0;
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="relative p-1.5 text-gray-500 hover:text-gray-900 transition-colors"
+        aria-label="Notifications"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        </svg>
+        {unread > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold bg-red-500 text-white rounded-full">
+            {unread > 99 ? "99+" : unread}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-96 overflow-y-auto">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
+            <span className="text-sm font-medium text-gray-700">Notifications</span>
+            {unread > 0 && (
+              <button
+                onClick={() => markAllReadMutation.mutate()}
+                className="text-xs text-indigo-600 hover:text-indigo-800"
+              >
+                Mark all as read
+              </button>
+            )}
+          </div>
+          {!notifications || notifications.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-gray-400 text-center">No new notifications</p>
+          ) : (
+            notifications.map((n) => (
+              <button
+                key={n.id}
+                onClick={() => {
+                  markReadMutation.mutate(n.id);
+                  setOpen(false);
+                  queryClient.invalidateQueries({ queryKey: ["favorite", String(n.favorite_id)] });
+                  navigate(`/favorites/${n.favorite_id}`);
+                }}
+                className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-50 last:border-0 transition-colors"
+              >
+                <p className="text-sm text-gray-900">
+                  <span className="font-medium">{n.commenter_name}</span>
+                  {" mentioned you on "}
+                  <span className="font-medium">{n.listing_title}</span>
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5 truncate">{n.comment_body}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{timeAgo(n.created_at)}</p>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Layout() {
   const { logout } = useAuth();
@@ -65,6 +189,7 @@ export default function Layout() {
                 )}
               </Link>
             ))}
+            <NotificationBell />
             <button
               onClick={logout}
               className="text-sm font-medium text-gray-500 hover:text-red-600 transition-colors"
@@ -73,20 +198,23 @@ export default function Layout() {
             </button>
           </nav>
 
-          {/* Mobile hamburger button */}
-          <button
-            className="md:hidden p-2 text-gray-500 hover:text-gray-900"
-            onClick={() => setMenuOpen((o) => !o)}
-            aria-label="Toggle menu"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              {menuOpen ? (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              ) : (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              )}
-            </svg>
-          </button>
+          {/* Mobile: bell + hamburger */}
+          <div className="flex md:hidden items-center gap-2">
+            <NotificationBell />
+            <button
+              className="p-2 text-gray-500 hover:text-gray-900"
+              onClick={() => setMenuOpen((o) => !o)}
+              aria-label="Toggle menu"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {menuOpen ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                )}
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Mobile dropdown menu */}
