@@ -60,6 +60,7 @@ services:
   backend:
     build:
       context: ../backend
+      target: prod
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       MINIO_ENDPOINT: minio:9000
