@@ -11,6 +11,7 @@ A web app to find your next apartment. Reads housing offer emails from Gmail (se
 - **Duplicate detection** — 4-layer dedup: source ID, URL, content fingerprint (SHA256), perceptual image hashing (phash)
 - **Swipe UI** — Tinder-style card swiping to like/pass on listings
 - **Shared favorites** — Household members see the same favorites, can comment and track price history
+- **@mention notifications** — @mention a household member in a comment to send them an in-app notification and an email (via SendGrid)
 - **Household invites** — Invite another user by email to join your household
 
 ## Prerequisites
@@ -22,6 +23,7 @@ A web app to find your next apartment. Reads housing offer emails from Gmail (se
   - Redirect URI: `http://localhost:8000/api/v1/auth/google/callback`
   - Scopes: `openid`, `email`, `profile`, `gmail.readonly`
 - **OpenAI API key** (each user configures their own in the app)
+- **SendGrid account** (optional — free tier gives 100 emails/day for @mention notifications)
 
 ## Setup
 
@@ -136,6 +138,22 @@ When configured, the proxy is used **only** for HTML fetching on seloger.com —
 
 If these variables are not set, the scraper falls back to direct connections (seloger may return blocks/CAPTCHAs).
 
+## Email notifications (optional)
+
+When a household member is @mentioned in a comment, they receive an email notification via SendGrid. To enable this:
+
+1. Create a free [SendGrid](https://sendgrid.com) account
+2. Verify your sender email address (Settings > Sender Authentication > Single Sender Verification)
+3. Generate an API key with "Mail Send" permission
+4. Add to `deploy/.env`:
+
+```
+SENDGRID_API_KEY=SG.your_api_key
+SENDGRID_FROM_EMAIL=your_verified@email.com
+```
+
+If these variables are not set, email notifications are silently skipped (in-app notifications still work). Users can toggle email notifications on/off in Settings.
+
 ## Architecture
 
 | Layer | Technology |
@@ -147,7 +165,7 @@ If these variables are not set, the scraper falls back to direct connections (se
 | Photos | MinIO (S3-compatible) |
 | Scraping | curl_cffi (Chrome TLS impersonation) + BeautifulSoup |
 | Proxy | Rotating residential proxy (Decodo) for Datadome bypass |
-| Email | APScheduler + Gmail API |
+| Email | APScheduler + Gmail API + SendGrid (notifications) |
 | LLM | OpenAI GPT-4o-mini (extraction + photo classification) |
 | Auth | Google OAuth 2.0 + JWT |
 | Monitoring | Datadog (APM traces, log correlation, RUM, network monitoring) |
