@@ -1,7 +1,7 @@
 import re
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -21,6 +21,7 @@ from app.schemas.favorite import (
     FavoriteUpdateRequest,
 )
 from app.schemas.listing import ListingResponse, PhotoResponse, PriceHistoryItem
+from app.services.email import send_mention_email
 
 router = APIRouter()
 
@@ -226,11 +227,14 @@ async def delete_favorite(
 async def add_comment(
     favorite_id: int,
     body: CommentCreateRequest,
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(Favorite).where(Favorite.id == favorite_id, Favorite.household_id == user.household_id)
+        select(Favorite)
+        .options(selectinload(Favorite.listing))
+        .where(Favorite.id == favorite_id, Favorite.household_id == user.household_id)
     )
     fav = result.scalar_one_or_none()
     if not fav:
@@ -247,6 +251,7 @@ async def add_comment(
             select(Household).options(selectinload(Household.members)).where(Household.id == user.household_id)
         )
         household = hh_result.scalar_one()
+        listing_title = fav.listing.title or "a listing"
         for member in household.members:
             if member.id == user.id:
                 continue
@@ -257,6 +262,16 @@ async def add_comment(
                     comment_id=comment.id,
                     favorite_id=fav.id,
                 ))
+                if member.email_notifications:
+                    background_tasks.add_task(
+                        send_mention_email,
+                        to_email=member.email,
+                        to_name=first_name,
+                        commenter_name=user.name,
+                        comment_body=body.body,
+                        listing_title=listing_title,
+                        favorite_id=fav.id,
+                    )
 
     await db.commit()
     await db.refresh(comment)

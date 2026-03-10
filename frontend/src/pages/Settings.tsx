@@ -7,6 +7,7 @@ interface SettingsData {
   openai_api_key_set: boolean;
   openai_api_key_masked: string | null;
   gmail_connected: boolean;
+  email_notifications: boolean;
 }
 
 interface HouseholdMember {
@@ -66,6 +67,12 @@ export default function Settings() {
   const apiKeyError = apiKeyMutation.isError
     ? (apiKeyMutation.error as any)?.response?.data?.detail ?? "Failed to save API key."
     : null;
+
+  const emailNotifMutation = useMutation({
+    mutationFn: (enabled: boolean) =>
+      client.put("/settings", { email_notifications: enabled }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["settings"] }),
+  });
 
   const { data: sentInvites } = useQuery<SentInviteData[]>({
     queryKey: ["sentInvites"],
@@ -139,6 +146,35 @@ export default function Settings() {
             Not connected. Sign out and sign in again to grant Gmail access.
           </p>
         )}
+      </section>
+
+      {/* Email Notifications */}
+      <section className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-medium text-gray-700">Email Notifications</h3>
+            <p className="text-xs text-gray-400 mt-1">
+              Email me when someone @mentions me in a comment
+            </p>
+          </div>
+          <button
+            role="switch"
+            aria-checked={settings?.email_notifications ?? true}
+            onClick={() =>
+              emailNotifMutation.mutate(!(settings?.email_notifications ?? true))
+            }
+            disabled={emailNotifMutation.isPending}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 ${
+              settings?.email_notifications ? "bg-indigo-600" : "bg-gray-200"
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                settings?.email_notifications ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
+        </div>
       </section>
 
       {/* API Key */}

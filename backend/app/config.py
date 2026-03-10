@@ -41,6 +41,10 @@ class Settings(BaseSettings):
             return f"http://{self.proxy_user}:{self.proxy_password}@{self.proxy_host}"
         return ""
 
+    # SendGrid
+    sendgrid_api_key: str = ""
+    sendgrid_from_email: str = ""
+
     # Email polling
     email_poll_interval_minutes: int = 5
 

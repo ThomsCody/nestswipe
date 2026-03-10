@@ -5,7 +5,9 @@ class SettingsResponse(BaseModel):
     openai_api_key_set: bool
     openai_api_key_masked: str | None
     gmail_connected: bool
+    email_notifications: bool
 
 
 class SettingsUpdate(BaseModel):
     openai_api_key: str | None = None
+    email_notifications: bool | None = None

@@ -24,6 +24,7 @@ async def get_settings(user: User = Depends(get_current_user)):
         openai_api_key_set=bool(user.openai_api_key),
         openai_api_key_masked=_mask_key(user.openai_api_key),
         gmail_connected=bool(user.gmail_refresh_token),
+        email_notifications=user.email_notifications,
     )
 
 
@@ -51,10 +52,13 @@ async def update_settings(
                     detail=f"OpenAI API error: {e.message}",
                 )
         user.openai_api_key = key or None
+    if body.email_notifications is not None:
+        user.email_notifications = body.email_notifications
     await db.commit()
     await db.refresh(user)
     return SettingsResponse(
         openai_api_key_set=bool(user.openai_api_key),
         openai_api_key_masked=_mask_key(user.openai_api_key),
         gmail_connected=bool(user.gmail_refresh_token),
+        email_notifications=user.email_notifications,
     )
