@@ -1,8 +1,8 @@
 .PHONY: test test-frontend up down build migrate logs
 
-# Run backend tests inside the container
+# Run backend tests using the test stage (rebuild only needed if dependencies change)
 test:
-	docker compose --env-file deploy/.env exec -T backend python -m pytest tests/ -v --tb=short
+	docker compose --env-file deploy/.env run --rm -T --build backend-test
 
 # Run frontend tests locally
 test-frontend:

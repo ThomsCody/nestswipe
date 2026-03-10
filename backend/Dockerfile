@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.12-slim AS deps
 
 WORKDIR /app
 
@@ -9,6 +9,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+FROM deps AS prod
+
 COPY . .
 
 CMD ["ddtrace-run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--log-config", "log_config.yaml"]
+
+FROM deps AS test
+
+COPY requirements-test.txt .
+RUN pip install --no-cache-dir -r requirements-test.txt
+
+CMD ["python", "-m", "pytest", "tests/", "-v", "--tb=short"]
