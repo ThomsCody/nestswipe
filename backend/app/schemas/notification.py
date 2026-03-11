@@ -3,8 +3,9 @@ from pydantic import BaseModel
 
 class NotificationResponse(BaseModel):
     id: int
-    comment_body: str
-    commenter_name: str
+    comment_body: str | None
+    commenter_name: str | None
+    message: str | None
     favorite_id: int
     listing_title: str
     created_at: str

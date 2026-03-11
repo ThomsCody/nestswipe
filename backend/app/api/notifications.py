@@ -44,8 +44,9 @@ async def get_notifications(
     return [
         NotificationResponse(
             id=n.id,
-            comment_body=n.comment.body[:200],
-            commenter_name=n.comment.user.name,
+            comment_body=n.comment.body[:200] if n.comment else None,
+            commenter_name=n.comment.user.name if n.comment else None,
+            message=n.message,
             favorite_id=n.favorite_id,
             listing_title=fav_map[n.favorite_id].listing.title if n.favorite_id in fav_map else "",
             created_at=n.created_at.isoformat(),

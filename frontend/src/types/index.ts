@@ -54,8 +54,9 @@ export interface PriceHistoryEntry {
 
 export interface Notification {
   id: number;
-  comment_body: string;
-  commenter_name: string;
+  comment_body: string | null;
+  commenter_name: string | null;
+  message: string | null;
   favorite_id: number;
   listing_title: string;
   created_at: string;

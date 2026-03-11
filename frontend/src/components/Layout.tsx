@@ -119,12 +119,18 @@ function NotificationBell() {
                 }}
                 className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-50 last:border-0 transition-colors"
               >
-                <p className="text-sm text-gray-900">
-                  <span className="font-medium">{n.commenter_name}</span>
-                  {" mentioned you on "}
-                  <span className="font-medium">{n.listing_title}</span>
-                </p>
-                <p className="text-xs text-gray-500 mt-0.5 truncate">{n.comment_body}</p>
+                {n.message ? (
+                  <p className="text-sm text-gray-900">{n.message}</p>
+                ) : (
+                  <>
+                    <p className="text-sm text-gray-900">
+                      <span className="font-medium">{n.commenter_name}</span>
+                      {" mentioned you on "}
+                      <span className="font-medium">{n.listing_title}</span>
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5 truncate">{n.comment_body}</p>
+                  </>
+                )}
                 <p className="text-xs text-gray-400 mt-0.5">{timeAgo(n.created_at)}</p>
               </button>
             ))

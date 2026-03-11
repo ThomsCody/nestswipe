@@ -8,6 +8,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
+class FavoriteStatus(str, enum.Enum):
+    to_contact = "to_contact"
+    visit_planned = "visit_planned"
+    offer_made = "offer_made"
+
+
 class SwipeDirection(str, enum.Enum):
     like = "like"
     pass_ = "pass"
@@ -39,8 +45,14 @@ class Favorite(Base):
     seller_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     seller_phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     seller_is_agency: Mapped[Optional[bool]] = mapped_column(Boolean, server_default="false", nullable=True)
+    status: Mapped[FavoriteStatus] = mapped_column(
+        Enum(FavoriteStatus, values_callable=lambda e: [x.value for x in e]),
+        server_default="to_contact",
+    )
+    owner_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
 
     listing: Mapped["Listing"] = relationship()  # noqa: F821
+    owner: Mapped[Optional["User"]] = relationship()  # noqa: F821
     comments: Mapped[list["Comment"]] = relationship(back_populates="favorite", cascade="all, delete-orphan")
 
 

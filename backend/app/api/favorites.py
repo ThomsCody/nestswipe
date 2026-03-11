@@ -8,15 +8,17 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
 from app.database import get_db
-from app.models.interaction import Comment, Favorite
+from app.models.interaction import Comment, Favorite, FavoriteStatus
 from app.models.listing import Listing
 from app.models.notification import Notification
 from app.models.user import Household, User
+from app.services.email import send_assignment_email
 from app.schemas.favorite import (
     CommentCreateRequest,
     CommentResponse,
     FavoriteDetailResponse,
     FavoriteListItem,
+    FavoriteOwner,
     FavoritesListResponse,
     FavoriteUpdateRequest,
 )
@@ -54,12 +56,15 @@ def _listing_response(listing: Listing) -> ListingResponse:
 @router.get("", response_model=FavoritesListResponse)
 async def get_favorites(
     page: int = Query(default=1, ge=1),
-    per_page: int = Query(default=20, le=100),
+    per_page: int = Query(default=20, le=200),
     sort: str = Query(default="newest"),
+    owner_id: int | None = Query(default=None),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     base_query = select(Favorite).where(Favorite.household_id == user.household_id)
+    if owner_id is not None:
+        base_query = base_query.where(Favorite.owner_id == owner_id)
 
     # Count
     count_result = await db.execute(select(func.count()).select_from(base_query.subquery()))
@@ -74,6 +79,7 @@ async def get_favorites(
             selectinload(Favorite.listing).selectinload(Listing.photos),
             selectinload(Favorite.listing).selectinload(Listing.price_history),
             selectinload(Favorite.comments),
+            selectinload(Favorite.owner),
         )
         .order_by(order)
         .offset((page - 1) * per_page)
@@ -89,6 +95,8 @@ async def get_favorites(
                 listing=_listing_response(f.listing),
                 comment_count=len(f.comments),
                 has_visit_date=f.visit_date is not None,
+                status=f.status.value,
+                owner=FavoriteOwner(id=f.owner.id, name=f.owner.name, picture=f.owner.picture) if f.owner else None,
                 created_at=f.created_at.isoformat(),
             )
             for f in favorites
@@ -109,6 +117,7 @@ async def get_favorite(
             selectinload(Favorite.listing).selectinload(Listing.photos),
             selectinload(Favorite.listing).selectinload(Listing.price_history),
             selectinload(Favorite.comments).selectinload(Comment.user),
+            selectinload(Favorite.owner),
         )
         .where(Favorite.id == favorite_id, Favorite.household_id == user.household_id)
     )
@@ -140,6 +149,8 @@ async def get_favorite(
         seller_name=fav.seller_name,
         seller_phone=fav.seller_phone,
         seller_is_agency=fav.seller_is_agency,
+        status=fav.status.value,
+        owner=FavoriteOwner(id=fav.owner.id, name=fav.owner.name, picture=fav.owner.picture) if fav.owner else None,
         created_at=fav.created_at.isoformat(),
     )
 
@@ -148,6 +159,7 @@ async def get_favorite(
 async def update_favorite(
     favorite_id: int,
     body: FavoriteUpdateRequest,
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -157,6 +169,7 @@ async def update_favorite(
             selectinload(Favorite.listing).selectinload(Listing.photos),
             selectinload(Favorite.listing).selectinload(Listing.price_history),
             selectinload(Favorite.comments).selectinload(Comment.user),
+            selectinload(Favorite.owner),
         )
         .where(Favorite.id == favorite_id, Favorite.household_id == user.household_id)
     )
@@ -174,9 +187,42 @@ async def update_favorite(
         fav.seller_phone = body.seller_phone
     if body.seller_is_agency is not None:
         fav.seller_is_agency = body.seller_is_agency
+    if body.status is not None:
+        fav.status = FavoriteStatus(body.status)
+
+    # Handle owner assignment + notification
+    new_owner_id = None
+    if "owner_id" in body.model_fields_set:
+        old_owner_id = fav.owner_id
+        fav.owner_id = body.owner_id
+        if body.owner_id is not None and body.owner_id != old_owner_id:
+            new_owner_id = body.owner_id
+
+    await db.flush()
+
+    if new_owner_id is not None and new_owner_id != user.id:
+        listing_title = fav.listing.title or "a listing"
+        message = f"{user.name} t'a assign\u00e9 {listing_title}"
+        db.add(Notification(
+            user_id=new_owner_id,
+            favorite_id=fav.id,
+            message=message,
+        ))
+        # Send email if the assignee has email notifications enabled
+        assignee_result = await db.execute(select(User).where(User.id == new_owner_id))
+        assignee = assignee_result.scalar_one_or_none()
+        if assignee and assignee.email_notifications:
+            background_tasks.add_task(
+                send_assignment_email,
+                to_email=assignee.email,
+                to_name=assignee.name.split()[0] if assignee.name else "",
+                assigner_name=user.name,
+                listing_title=listing_title,
+                favorite_id=fav.id,
+            )
 
     await db.commit()
-    await db.refresh(fav)
+    await db.refresh(fav, attribute_names=["owner"])
 
     price_history = sorted(fav.listing.price_history, key=lambda ph: ph.observed_at)
 
@@ -202,6 +248,8 @@ async def update_favorite(
         seller_name=fav.seller_name,
         seller_phone=fav.seller_phone,
         seller_is_agency=fav.seller_is_agency,
+        status=fav.status.value,
+        owner=FavoriteOwner(id=fav.owner.id, name=fav.owner.name, picture=fav.owner.picture) if fav.owner else None,
         created_at=fav.created_at.isoformat(),
     )
 

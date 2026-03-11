@@ -13,11 +13,21 @@ class CommentResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class FavoriteOwner(BaseModel):
+    id: int
+    name: str
+    picture: str | None
+
+    model_config = {"from_attributes": True}
+
+
 class FavoriteListItem(BaseModel):
     id: int
     listing: ListingResponse
     comment_count: int
     has_visit_date: bool
+    status: str
+    owner: FavoriteOwner | None
     created_at: str
 
     model_config = {"from_attributes": True}
@@ -33,6 +43,8 @@ class FavoriteDetailResponse(BaseModel):
     seller_name: str | None
     seller_phone: str | None
     seller_is_agency: bool | None
+    status: str
+    owner: FavoriteOwner | None
     created_at: str
 
     model_config = {"from_attributes": True}
@@ -44,6 +56,8 @@ class FavoriteUpdateRequest(BaseModel):
     seller_name: str | None = None
     seller_phone: str | None = None
     seller_is_agency: bool | None = None
+    status: str | None = None
+    owner_id: int | None = None
 
 
 class CommentCreateRequest(BaseModel):

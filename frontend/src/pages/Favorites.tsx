@@ -1,34 +1,141 @@
-import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import client from "@/api/client";
-import { photoUrl } from "@/api/photos";
-import type { Listing } from "@/types";
-import PriceTrend from "@/components/PriceTrend";
+import KanbanBoard from "@/components/board/KanbanBoard";
+import OwnerFilter from "@/components/board/OwnerFilter";
 import ErrorBox from "@/components/ErrorBox";
-
-interface FavoriteItem {
-  id: number;
-  listing: Listing;
-  comment_count: number;
-  has_visit_date: boolean;
-  created_at: string;
-}
+import type { FavoriteItem } from "@/components/board/KanbanCard";
 
 interface FavoritesData {
   favorites: FavoriteItem[];
   total: number;
 }
 
+interface HouseholdMember {
+  id: number;
+  name: string;
+  picture?: string;
+}
+
+interface HouseholdData {
+  id: number;
+  name: string;
+  members: HouseholdMember[];
+}
+
+interface UserInfo {
+  id: number;
+  name: string;
+}
+
 export default function Favorites() {
+  const queryClient = useQueryClient();
+  const [ownerFilter, setOwnerFilter] = useState<number | null>(null);
+
   const { data, isLoading, isError, refetch } = useQuery<FavoritesData>({
-    queryKey: ["favorites"],
-    queryFn: () => client.get("/favorites").then((r) => r.data),
+    queryKey: ["favorites", ownerFilter],
+    queryFn: () => {
+      const params: Record<string, string> = { per_page: "200" };
+      if (ownerFilter !== null) params.owner_id = String(ownerFilter);
+      return client.get("/favorites", { params }).then((r) => r.data);
+    },
+  });
+
+  const { data: household } = useQuery<HouseholdData>({
+    queryKey: ["household"],
+    queryFn: () => client.get("/household").then((r) => r.data),
+    staleTime: 60_000,
+  });
+
+  const { data: userInfo } = useQuery<UserInfo>({
+    queryKey: ["auth-me"],
+    queryFn: () => client.get("/auth/me").then((r) => r.data),
+    staleTime: Infinity,
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: (id: number) => client.delete(`/favorites/${id}`),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ["favorites", ownerFilter] });
+      const prev = queryClient.getQueryData<FavoritesData>(["favorites", ownerFilter]);
+      queryClient.setQueryData<FavoritesData>(["favorites", ownerFilter], (old) => {
+        if (!old) return old;
+        const favorites = old.favorites.filter((f) => f.id !== id);
+        return { ...old, favorites, total: old.total - 1 };
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) {
+        queryClient.setQueryData(["favorites", ownerFilter], ctx.prev);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["favorites"] });
+    },
+  });
+
+  const ownerMutation = useMutation({
+    mutationFn: ({ id, owner_id }: { id: number; owner_id: number | null }) =>
+      client.patch(`/favorites/${id}`, { owner_id }).then((r) => r.data),
+    onMutate: async ({ id, owner_id }) => {
+      await queryClient.cancelQueries({ queryKey: ["favorites", ownerFilter] });
+      const prev = queryClient.getQueryData<FavoritesData>(["favorites", ownerFilter]);
+      queryClient.setQueryData<FavoritesData>(["favorites", ownerFilter], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          favorites: old.favorites.map((f) => {
+            if (f.id !== id) return f;
+            const member = household?.members.find((m) => m.id === owner_id);
+            return {
+              ...f,
+              owner: member ? { id: member.id, name: member.name, picture: member.picture ?? null } : null,
+            };
+          }),
+        };
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) {
+        queryClient.setQueryData(["favorites", ownerFilter], ctx.prev);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["favorites"] });
+    },
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: string }) =>
+      client.patch(`/favorites/${id}`, { status }),
+    onMutate: async ({ id, status }) => {
+      await queryClient.cancelQueries({ queryKey: ["favorites", ownerFilter] });
+      const prev = queryClient.getQueryData<FavoritesData>(["favorites", ownerFilter]);
+      queryClient.setQueryData<FavoritesData>(["favorites", ownerFilter], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          favorites: old.favorites.map((f) => (f.id === id ? { ...f, status } : f)),
+        };
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) {
+        queryClient.setQueryData(["favorites", ownerFilter], ctx.prev);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["favorites"] });
+    },
   });
 
   if (isLoading) return <p className="text-gray-500">Loading...</p>;
   if (isError) return <ErrorBox message="Could not load favorites." onRetry={() => refetch()} />;
 
-  if (!data?.favorites.length) {
+  if (!data?.favorites.length && ownerFilter === null) {
     return (
       <div>
         <h2 className="text-xl font-semibold text-gray-900 mb-4">Favorites</h2>
@@ -40,85 +147,25 @@ export default function Favorites() {
   return (
     <div>
       <h2 className="text-xl font-semibold text-gray-900 mb-4">
-        Favorites ({data.total})
+        Favorites ({data?.total ?? 0})
       </h2>
-      <div className="grid gap-4 sm:grid-cols-2">
-        {data.favorites.map((fav) => (
-          <Link
-            key={fav.id}
-            to={`/favorites/${fav.id}`}
-            className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow"
-          >
-            <div className="h-40 bg-gray-200">
-              {fav.listing.photos[0] && (
-                <img
-                  src={photoUrl(fav.listing.photos[0].s3_key)}
-                  alt=""
-                  className="w-full h-full object-cover"
-                />
-              )}
-            </div>
-            <div className="p-3">
-              <div className="flex flex-wrap gap-1 mb-1">
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-700">
-                  {fav.listing.source}
-                </span>
-                {fav.listing.floor != null && (
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700">
-                    {fav.listing.floor === 0 ? "RDC" : `${fav.listing.floor}e ét.`}
-                  </span>
-                )}
-                {fav.listing.rooms != null && (
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700">
-                    {fav.listing.rooms} p.
-                  </span>
-                )}
-                {fav.listing.bedrooms != null && (
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-100 text-teal-700">
-                    {fav.listing.bedrooms} ch.
-                  </span>
-                )}
-              </div>
-              <h3 className="font-medium text-gray-900 text-sm truncate">{fav.listing.title}</h3>
-              <div className="flex gap-2 text-xs text-gray-500 mt-1">
-                {fav.listing.price != null && (
-                  <span className="font-medium text-gray-700">
-                    {fav.listing.price.toLocaleString("fr-FR")} &euro;
-                    <PriceTrend history={fav.listing.price_history} />
-                  </span>
-                )}
-                {fav.listing.sqm != null && <span>{fav.listing.sqm} m&sup2;</span>}
-                {fav.listing.rooms != null && (
-                  <span>{fav.listing.rooms} p.</span>
-                )}
-                {fav.listing.bedrooms != null && <span>{fav.listing.bedrooms} ch.</span>}
-              </div>
-              <div className="flex items-center justify-between mt-1">
-                {(fav.listing.city || fav.listing.district) ? (
-                  <p className="text-xs text-gray-400">
-                    {[fav.listing.district, fav.listing.city].filter(Boolean).join(", ")}
-                  </p>
-                ) : <span />}
-                <span className="inline-flex items-center gap-1.5">
-                  {fav.has_visit_date && (
-                    <svg className="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  )}
-                  {fav.comment_count > 0 && (
-                    <span className="inline-flex items-center gap-0.5 text-xs text-gray-400">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                      </svg>
-                      {fav.comment_count}
-                    </span>
-                  )}
-                </span>
-              </div>
-            </div>
-          </Link>
-        ))}
-      </div>
+      {household && (
+        <div className="mb-4">
+          <OwnerFilter
+            members={household.members}
+            currentUserId={userInfo?.id}
+            value={ownerFilter}
+            onChange={setOwnerFilter}
+          />
+        </div>
+      )}
+      <KanbanBoard
+        items={data?.favorites ?? []}
+        members={household?.members}
+        onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
+        onArchive={(id) => archiveMutation.mutate(id)}
+        onOwnerChange={(id, owner_id) => ownerMutation.mutate({ id, owner_id })}
+      />
     </div>
   );
 }

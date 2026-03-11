@@ -7,6 +7,12 @@ import ListingDetailView, { ContactForm, CommentsSection } from "@/components/Li
 import type { HouseholdMember } from "@/components/ListingDetailView";
 import ErrorBox from "@/components/ErrorBox";
 
+interface FavoriteOwner {
+  id: number;
+  name: string;
+  picture: string | null;
+}
+
 interface FavoriteDetailData {
   id: number;
   listing: Listing;
@@ -17,6 +23,8 @@ interface FavoriteDetailData {
   seller_name: string | null;
   seller_phone: string | null;
   seller_is_agency: boolean | null;
+  status: string;
+  owner: FavoriteOwner | null;
   created_at: string;
 }
 
@@ -122,29 +130,61 @@ export default function FavoriteDetail() {
       backLabel="Back to favorites"
       backTo="/favorites"
       contactForm={
-        <ContactForm
-          visitDate={visitDate}
-          location={location}
-          sellerName={sellerName}
-          sellerPhone={sellerPhone}
-          sellerIsAgency={sellerIsAgency}
-          isDirty={isDirty}
-          isSaving={updateMutation.isPending}
-          onVisitDateChange={setVisitDate}
-          onLocationChange={setLocation}
-          onSellerNameChange={setSellerName}
-          onSellerPhoneChange={setSellerPhone}
-          onSellerIsAgencyChange={setSellerIsAgency}
-          onSave={() =>
-            updateMutation.mutate({
-              visit_date: visitDate || null,
-              location: location || null,
-              seller_name: sellerName || null,
-              seller_phone: sellerPhone || null,
-              seller_is_agency: sellerIsAgency,
-            })
-          }
-        />
+        <>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Statut</label>
+              <select
+                value={data.status}
+                onChange={(e) => updateMutation.mutate({ status: e.target.value })}
+                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+              >
+                <option value="to_contact">A contacter</option>
+                <option value="visit_planned">Visite pr&eacute;vue</option>
+                <option value="offer_made">Offre faite</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Assign&eacute; &agrave;</label>
+              <select
+                value={data.owner?.id ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  updateMutation.mutate({ owner_id: val ? Number(val) : null });
+                }}
+                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+              >
+                <option value="">Personne</option>
+                {household?.members.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <ContactForm
+            visitDate={visitDate}
+            location={location}
+            sellerName={sellerName}
+            sellerPhone={sellerPhone}
+            sellerIsAgency={sellerIsAgency}
+            isDirty={isDirty}
+            isSaving={updateMutation.isPending}
+            onVisitDateChange={setVisitDate}
+            onLocationChange={setLocation}
+            onSellerNameChange={setSellerName}
+            onSellerPhoneChange={setSellerPhone}
+            onSellerIsAgencyChange={setSellerIsAgency}
+            onSave={() =>
+              updateMutation.mutate({
+                visit_date: visitDate || null,
+                location: location || null,
+                seller_name: sellerName || null,
+                seller_phone: sellerPhone || null,
+                seller_is_agency: sellerIsAgency,
+              })
+            }
+          />
+        </>
       }
       commentsSection={
         <CommentsSection
