@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import Layout from "@/components/Layout";
 import Login from "@/pages/Login";
@@ -11,8 +11,12 @@ import Settings from "@/pages/Settings";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <div className="flex h-screen items-center justify-center">Loading...</div>;
-  if (!token) return <Navigate to="/login" replace />;
+  if (!token) {
+    const redirect = location.pathname + location.search;
+    return <Navigate to={`/login?redirect=${encodeURIComponent(redirect)}`} replace />;
+  }
   return <>{children}</>;
 }
 

@@ -16,13 +16,18 @@ export default function Login() {
     }
   }, [searchParams, login]);
 
-  // Redirect to /swipe once authenticated
+  // Redirect to original URL (or /swipe) once authenticated
   useEffect(() => {
-    if (token) navigate("/swipe", { replace: true });
-  }, [token, navigate]);
+    if (token) {
+      const redirect = searchParams.get("redirect") || "/swipe";
+      navigate(redirect, { replace: true });
+    }
+  }, [token, navigate, searchParams]);
 
   const handleGoogleLogin = () => {
-    window.location.href = "/api/v1/auth/google/login";
+    const redirect = searchParams.get("redirect") || "";
+    const state = redirect ? `?state=${encodeURIComponent(redirect)}` : "";
+    window.location.href = `/api/v1/auth/google/login${state}`;
   };
 
   return (

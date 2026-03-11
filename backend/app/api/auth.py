@@ -38,7 +38,7 @@ def create_access_token(user_id: int) -> str:
 
 
 @router.get("/google/login")
-async def google_login():
+async def google_login(state: str = ""):
     params = {
         "client_id": settings.google_client_id,
         "redirect_uri": settings.google_redirect_uri,
@@ -47,11 +47,13 @@ async def google_login():
         "access_type": "offline",
         "prompt": "consent",
     }
+    if state:
+        params["state"] = state
     return RedirectResponse(url=f"{GOOGLE_AUTH_URL}?{urlencode(params)}")
 
 
 @router.get("/google/callback")
-async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
+async def google_callback(code: str, state: str = "", db: AsyncSession = Depends(get_db)):
     # Exchange code for tokens
     async with httpx.AsyncClient() as client:
         token_resp = await client.post(
@@ -117,8 +119,11 @@ async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
     await db.refresh(user)
 
     access_token = create_access_token(user.id)
-    # Redirect to frontend with token
-    return RedirectResponse(url=f"{settings.frontend_url}/login?token={access_token}")
+    # Redirect to frontend with token, preserving the original redirect path
+    redirect_url = f"{settings.frontend_url}/login?token={access_token}"
+    if state:
+        redirect_url += f"&redirect={state}"
+    return RedirectResponse(url=redirect_url)
 
 
 @router.post("/refresh", response_model=TokenResponse)
