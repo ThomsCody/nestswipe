@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import client from "@/api/client";
-import { photoUrl } from "@/api/photos";
 import type { Listing } from "@/types";
+import Gallery from "@/components/Gallery";
 import PriceTrend from "@/components/PriceTrend";
 import ErrorBox from "@/components/ErrorBox";
 
@@ -17,77 +17,6 @@ interface QueueData {
   remaining: number;
 }
 
-function PhotoCarousel({ photos }: { photos: Listing["photos"] }) {
-  const [index, setIndex] = useState(0);
-  const touchStartX = useRef<number | null>(null);
-
-  if (photos.length === 0) {
-    return (
-      <div className="w-full h-72 bg-gray-200 flex items-center justify-center text-gray-400">
-        No photos
-      </div>
-    );
-  }
-
-  const onTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0]!.clientX;
-  };
-  const onTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX.current === null) return;
-    const dx = e.changedTouches[0]!.clientX - touchStartX.current;
-    if (Math.abs(dx) > 50) {
-      dx < 0
-        ? setIndex((i) => (i < photos.length - 1 ? i + 1 : 0))
-        : setIndex((i) => (i > 0 ? i - 1 : photos.length - 1));
-    }
-    touchStartX.current = null;
-  };
-
-  return (
-    <div
-      className="relative w-full h-72 bg-gray-900 overflow-hidden"
-      onTouchStart={onTouchStart}
-      onTouchEnd={onTouchEnd}
-    >
-      <img
-        src={photoUrl(photos[index]!.s3_key)}
-        alt=""
-        className="w-full h-full object-contain"
-      />
-      {photos.length > 1 && (
-        <>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setIndex((i) => (i > 0 ? i - 1 : photos.length - 1));
-            }}
-            className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-black/70"
-          >
-            &lt;
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setIndex((i) => (i < photos.length - 1 ? i + 1 : 0));
-            }}
-            className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-black/70"
-          >
-            &gt;
-          </button>
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
-            {photos.map((_, i) => (
-              <span
-                key={i}
-                className={`block w-2 h-2 rounded-full ${i === index ? "bg-white" : "bg-white/40"}`}
-              />
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 function ListingCard({
   listing,
   onSwipe,
@@ -98,8 +27,8 @@ function ListingCard({
   isPending: boolean;
 }) {
   return (
-    <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden max-w-md w-full">
-      <PhotoCarousel photos={listing.photos} />
+    <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden max-w-md lg:max-w-2xl w-full">
+      <Gallery photos={listing.photos} heightClass="h-72 lg:h-[28rem]" />
       <div className="p-4">
         <div className="flex flex-wrap gap-1.5 mb-2">
           <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
@@ -232,6 +161,7 @@ export default function Swipe() {
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       if (e.key === "ArrowLeft") handleSwipe("pass");
       if (e.key === "ArrowRight") handleSwipe("like");
     };
