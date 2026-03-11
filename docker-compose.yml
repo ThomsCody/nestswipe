@@ -46,6 +46,8 @@ services:
       PROXY_HOST: ${PROXY_HOST:-}
       PROXY_USER: ${PROXY_USER:-}
       PROXY_PASSWORD: ${PROXY_PASSWORD:-}
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
+      SENDGRID_FROM_EMAIL: ${SENDGRID_FROM_EMAIL:-}
       # Datadog APM
       DD_AGENT_HOST: datadog-agent
       DD_SERVICE: nestswipe-backend

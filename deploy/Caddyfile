@@ -1,4 +1,4 @@
-nestswipe.duckdns.org {
+nestswipe.freeddns.org {
 	encode gzip
 
 	handle /api/* {

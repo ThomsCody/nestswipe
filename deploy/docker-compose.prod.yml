@@ -25,7 +25,7 @@ services:
         VITE_DD_CLIENT_TOKEN: ${VITE_DD_CLIENT_TOKEN}
         VITE_DD_SITE: ${VITE_DD_SITE:-datadoghq.com}
         VITE_DD_ENV: ${VITE_DD_ENV:-prod}
-        VITE_DD_ALLOWED_TRACING_URL: ${VITE_DD_ALLOWED_TRACING_URL:-https://nestswipe.duckdns.org}
+        VITE_DD_ALLOWED_TRACING_URL: ${VITE_DD_ALLOWED_TRACING_URL:-https://nestswipe.freeddns.org}
     entrypoint: ["sh", "-c", "cp -r /app/dist/* /output/"]
     volumes:
       - frontend_dist:/output
@@ -72,9 +72,11 @@ services:
       PROXY_HOST: ${PROXY_HOST:-}
       PROXY_USER: ${PROXY_USER:-}
       PROXY_PASSWORD: ${PROXY_PASSWORD:-}
-      GOOGLE_REDIRECT_URI: https://nestswipe.duckdns.org/api/v1/auth/google/callback
-      ALLOWED_ORIGINS: https://nestswipe.duckdns.org
-      FRONTEND_URL: https://nestswipe.duckdns.org
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
+      SENDGRID_FROM_EMAIL: ${SENDGRID_FROM_EMAIL:-}
+      GOOGLE_REDIRECT_URI: https://nestswipe.freeddns.org/api/v1/auth/google/callback
+      ALLOWED_ORIGINS: https://nestswipe.freeddns.org
+      FRONTEND_URL: https://nestswipe.freeddns.org
       # Datadog APM
       DD_AGENT_HOST: datadog-agent
       DD_SERVICE: nestswipe-backend
