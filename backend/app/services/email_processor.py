@@ -172,8 +172,13 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                     logger.info("Skipping URL (LLM found no listing): %s", url)
                     continue
 
-                # Use resolved URL and source_id from scraper
-                extracted.external_url = scraped.resolved_url
+                # Use resolved URL — except for consultantsimmobilier where
+                # the original ap.immo link carries auth query params (u=, p=)
+                # that are required to view the listing without an extranet login.
+                if source == "consultantsimmobilier" and "ap.immo" in url:
+                    extracted.external_url = url
+                else:
+                    extracted.external_url = scraped.resolved_url
                 if scraped.source_id:
                     extracted.source_id = scraped.source_id
 
