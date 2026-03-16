@@ -61,9 +61,9 @@ Return a JSON object with the following fields (use null for missing values):
 - price: number — total price in euros (no currency symbol)
 - sqm: number — square meters (surface)
 - bedrooms: integer — number of bedrooms (chambres)
-- city: string — city name
-- district: string — district/neighborhood (quartier/arrondissement)
-- location_detail: string — more specific location info (street, metro, etc.)
+- city: string — city name (e.g. "Paris", "Boulogne-Billancourt")
+- district: string — the most precise neighborhood or quartier name. For Paris: combine arrondissement + quartier when both are available (e.g. "16e - Auteuil Nord", "9e - Batignolles", "11e - Oberkampf"). Look in breadcrumbs, page headings, URL path, and the description text for quartier names like Auteuil, Passy, Trocadéro, Batignolles, Montmartre, Marais, Bastille, Saint-Germain, etc. For other cities: use the neighborhood or area name.
+- location_detail: string — additional location info: street name, nearby metro station, landmarks
 - floor: integer — floor number (0 for ground floor / rez-de-chaussée, null if unknown)
 - rooms: integer — total number of rooms (pièces), distinct from bedrooms
 - description: string — brief description of the property (2-3 sentences max)
@@ -72,7 +72,8 @@ IMPORTANT:
 - Only extract data for residential property listings (apartments/houses for sale).
 - If the page is not a listing (error page, search results, homepage), return {"is_listing": false}.
 - Pay close attention to bedrooms vs rooms: "chambres" = bedrooms, "pièces" = rooms.
-- Floor: "rez-de-chaussée" / "RDC" = 0, "1er étage" = 1, etc."""
+- Floor: "rez-de-chaussée" / "RDC" = 0, "1er étage" = 1, etc.
+- For location: extract the MOST SPECIFIC neighborhood name available. Do not just say "Paris 16e" if the page mentions "Auteuil" or "Auteuil Nord" — include the quartier name."""
 
 
 class ExtractedListing(BaseModel):
