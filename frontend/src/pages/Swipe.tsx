@@ -88,17 +88,23 @@ function ListingCard({
         <button
           onClick={() => onSwipe("pass")}
           disabled={isPending}
-          className="flex-1 py-3 text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
+          className="flex-1 py-3 text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
         >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
           Pass
         </button>
         <div className="w-px bg-gray-200" />
         <button
           onClick={() => onSwipe("like")}
           disabled={isPending}
-          className="flex-1 py-3 text-sm font-medium text-gray-500 hover:bg-green-50 hover:text-green-600 transition-colors disabled:opacity-50"
+          className="flex-1 py-3 text-sm font-medium text-gray-500 hover:bg-green-50 hover:text-green-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
         >
           Like
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
         </button>
       </div>
     </div>
