@@ -12,6 +12,7 @@ class FavoriteStatus(str, enum.Enum):
     to_contact = "to_contact"
     visit_planned = "visit_planned"
     offer_made = "offer_made"
+    nogo = "nogo"
 
 
 class SwipeDirection(str, enum.Enum):

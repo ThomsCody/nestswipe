@@ -24,7 +24,7 @@ export default function KanbanColumn({ config, items, members, onOwnerChange }: 
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col min-w-[280px] w-[320px] shrink-0 rounded-xl ${
+      className={`flex flex-col min-w-[240px] flex-1 shrink-0 rounded-xl ${
         isOver ? "ring-2 ring-indigo-300" : ""
       }`}
     >

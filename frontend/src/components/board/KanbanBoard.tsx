@@ -40,6 +40,13 @@ const COLUMNS: ColumnConfig[] = [
     bg: "bg-emerald-50",
     ring: "bg-emerald-500",
   },
+  {
+    id: "nogo",
+    label: "No Go",
+    color: "text-red-700",
+    bg: "bg-red-50",
+    ring: "bg-red-500",
+  },
 ];
 
 function ArchiveDropZone({ visible }: { visible: boolean }) {
@@ -132,7 +139,7 @@ export default function KanbanBoard({ items, members, onStatusChange, onArchive,
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex gap-4 overflow-x-auto pb-4 -mx-4 px-4">
+      <div className="flex gap-3 overflow-x-auto pb-4 -mx-4 px-4">
         {grouped.map(({ config, items }) => (
           <KanbanColumn key={config.id} config={config} items={items} members={members} onOwnerChange={onOwnerChange} />
         ))}
