@@ -134,7 +134,9 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
             # Step 1: Extract candidate listing URLs from email HTML via LLM
             candidate_urls = await extract_listing_urls(user.openai_api_key, html_body, source)
             if not candidate_urls:
-                logger.info("Email %s: no candidate URLs found", msg_meta["id"])
+                logger.warning("extraction_failed: no candidate URLs found",
+                               extra={"event": "extraction_failed", "reason": "no_urls",
+                                      "source": source, "email_id": msg_meta["id"]})
                 continue
             logger.info("Email %s: found %d candidate URL(s)", msg_meta["id"], len(candidate_urls))
 
@@ -149,10 +151,14 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                 # Step 2: Scrape listing page → resolved URL, source_id, photos, page text
                 scraped = await scrape_listing(url, source)
                 if not scraped.resolved_url:
-                    logger.info("Skipping URL (no valid resolved page): %s", url)
+                    logger.warning("extraction_failed: no valid resolved page",
+                                   extra={"event": "extraction_failed", "reason": "no_resolved_url",
+                                          "source": source, "url": url})
                     continue
                 if not scraped.page_text:
-                    logger.info("Skipping URL (no page text extracted): %s", url)
+                    logger.warning("extraction_failed: no page text extracted",
+                                   extra={"event": "extraction_failed", "reason": "no_page_text",
+                                          "source": source, "url": url})
                     continue
                 if scraped.source_id and scraped.source_id in seen_source_ids:
                     logger.info("Skipping duplicate source_id %s: %s", scraped.source_id, url)
@@ -169,7 +175,9 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                     user.openai_api_key, scraped.page_text, source
                 )
                 if not extracted or not extracted.title:
-                    logger.info("Skipping URL (LLM found no listing): %s", url)
+                    logger.warning("extraction_failed: LLM found no listing",
+                                   extra={"event": "extraction_failed", "reason": "llm_no_listing",
+                                          "source": source, "url": url})
                     continue
 
                 # Use resolved URL — except for consultantsimmobilier where
@@ -227,7 +235,9 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
 
                 # Skip listings with no photos
                 if not photo_data:
-                    logger.info("Skipping listing with no usable photos: %s", url)
+                    logger.warning("extraction_failed: no usable photos",
+                                   extra={"event": "extraction_failed", "reason": "no_photos",
+                                          "source": source, "url": url})
                     continue
 
                 # Check for duplicates
