@@ -29,6 +29,9 @@ def _listing_response(listing: Listing) -> ListingResponse:
         district=listing.district,
         location_detail=listing.location_detail,
         external_url=listing.external_url,
+        contact_phone=listing.contact_phone,
+        agency_name=listing.agency_name,
+        agent_name=listing.agent_name,
         photos=[PhotoResponse.model_validate(p) for p in sorted(listing.photos, key=lambda p: p.position)],
         price_history=[
             PriceHistoryItem(price=ph.price, observed_at=ph.observed_at.isoformat())
@@ -156,7 +159,16 @@ async def restore_archive(
         )
     )
     if not existing_fav.scalar_one_or_none():
-        fav = Favorite(household_id=user.household_id, listing_id=listing_id)
+        # Load listing to pre-fill contact fields
+        listing_result = await db.execute(select(Listing).where(Listing.id == listing_id))
+        listing = listing_result.scalar_one_or_none()
+        fav = Favorite(
+            household_id=user.household_id,
+            listing_id=listing_id,
+            seller_name=listing.agency_name or listing.agent_name if listing else None,
+            seller_phone=listing.contact_phone if listing else None,
+            seller_is_agency=bool(listing.agency_name) if listing else False,
+        )
         db.add(fav)
 
     await db.commit()

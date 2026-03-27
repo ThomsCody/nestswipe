@@ -67,6 +67,9 @@ async def get_queue(
                 district=l.district,
                 location_detail=l.location_detail,
                 external_url=l.external_url,
+                contact_phone=l.contact_phone,
+                agency_name=l.agency_name,
+                agent_name=l.agent_name,
                 photos=[PhotoResponse.model_validate(p) for p in sorted(l.photos, key=lambda p: p.position)],
                 price_history=[
                     PriceHistoryItem(price=ph.price, observed_at=ph.observed_at.isoformat())
@@ -112,7 +115,13 @@ async def swipe(
             select(Favorite).where(Favorite.household_id == user.household_id, Favorite.listing_id == listing_id)
         )
         if not fav_result.scalar_one_or_none():
-            db.add(Favorite(household_id=user.household_id, listing_id=listing_id))
+            db.add(Favorite(
+                household_id=user.household_id,
+                listing_id=listing_id,
+                seller_name=listing.agency_name or listing.agent_name,
+                seller_phone=listing.contact_phone,
+                seller_is_agency=bool(listing.agency_name),
+            ))
 
     await db.commit()
     return {"status": "ok"}

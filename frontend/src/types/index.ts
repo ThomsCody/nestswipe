@@ -21,6 +21,9 @@ export interface Listing {
   district?: string;
   location_detail?: string;
   external_url?: string;
+  contact_phone?: string;
+  agency_name?: string;
+  agent_name?: string;
   photos: ListingPhoto[];
   price_history?: PriceHistoryEntry[];
   last_seen_at?: string;

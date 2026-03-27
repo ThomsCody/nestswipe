@@ -31,6 +31,9 @@ class ListingResponse(BaseModel):
     district: str | None
     location_detail: str | None
     external_url: str | None
+    contact_phone: str | None = None
+    agency_name: str | None = None
+    agent_name: str | None = None
     photos: list[PhotoResponse]
     price_history: list[PriceHistoryItem] = []
     last_seen_at: str | None = None

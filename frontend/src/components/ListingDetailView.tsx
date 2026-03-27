@@ -56,6 +56,7 @@ interface ContactFormProps {
   sellerIsAgency: boolean;
   isDirty: boolean;
   isSaving: boolean;
+  listing?: Listing;
   onVisitDateChange: (v: string) => void;
   onLocationChange: (v: string) => void;
   onSellerNameChange: (v: string) => void;
@@ -94,7 +95,7 @@ function ContactForm(props: ContactFormProps) {
             type="text"
             value={props.sellerName}
             onChange={(e) => props.onSellerNameChange(e.target.value)}
-            placeholder="Name"
+            placeholder={props.listing?.agent_name ?? props.listing?.agency_name ?? "Name"}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
           />
         </div>
@@ -104,7 +105,7 @@ function ContactForm(props: ContactFormProps) {
             type="tel"
             value={props.sellerPhone}
             onChange={(e) => props.onSellerPhoneChange(e.target.value)}
-            placeholder="Phone number"
+            placeholder={props.listing?.contact_phone ?? "Phone number"}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
           />
         </div>

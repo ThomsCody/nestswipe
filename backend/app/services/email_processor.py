@@ -31,6 +31,7 @@ SOURCES = {
     "seloger.com": "seloger",
     "pap.fr": "pap",
     "consultantsimmobilier.com": "consultantsimmobilier",
+    "barnes-international.com": "barnes",
 }
 
 
@@ -183,7 +184,7 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                 # Use resolved URL — except for consultantsimmobilier where
                 # the original ap.immo link carries auth query params (u=, p=)
                 # that are required to view the listing without an extranet login.
-                if source == "consultantsimmobilier" and "ap.immo" in url:
+                if source in ("consultantsimmobilier", "barnes") and "ap.immo" in url:
                     extracted.external_url = url
                 else:
                     extracted.external_url = scraped.resolved_url
@@ -260,7 +261,8 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                     # Backfill fields that were missing
                     for fld in ("title", "description", "sqm", "bedrooms", "rooms",
                                 "floor", "city", "district", "location_detail",
-                                "external_url", "source_id"):
+                                "external_url", "source_id",
+                                "contact_phone", "agency_name", "agent_name"):
                         new_val = getattr(extracted, fld, None)
                         if new_val is not None and getattr(existing, fld, None) is None:
                             setattr(existing, fld, new_val)
@@ -282,6 +284,9 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                         city=extracted.city,
                         district=extracted.district,
                         location_detail=extracted.location_detail,
+                        contact_phone=extracted.contact_phone,
+                        agency_name=extracted.agency_name,
+                        agent_name=extracted.agent_name,
                         fingerprint=fingerprint,
                     )
                     db.add(listing)

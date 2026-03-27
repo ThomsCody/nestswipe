@@ -71,9 +71,9 @@ export default function FavoriteDetail() {
     if (data) {
       setVisitDate(data.visit_date ? data.visit_date.slice(0, 16) : "");
       setLocation(data.location ?? "");
-      setSellerName(data.seller_name ?? "");
-      setSellerPhone(data.seller_phone ?? "");
-      setSellerIsAgency(data.seller_is_agency ?? false);
+      setSellerName(data.seller_name ?? data.listing.agent_name ?? data.listing.agency_name ?? "");
+      setSellerPhone(data.seller_phone ?? data.listing.contact_phone ?? "");
+      setSellerIsAgency(data.seller_is_agency ?? !!data.listing.agency_name);
     }
   }, [data]);
 
@@ -169,6 +169,7 @@ export default function FavoriteDetail() {
             sellerIsAgency={sellerIsAgency}
             isDirty={isDirty}
             isSaving={updateMutation.isPending}
+            listing={data.listing}
             onVisitDateChange={setVisitDate}
             onLocationChange={setLocation}
             onSellerNameChange={setSellerName}

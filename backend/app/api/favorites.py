@@ -44,6 +44,9 @@ def _listing_response(listing: Listing) -> ListingResponse:
         district=listing.district,
         location_detail=listing.location_detail,
         external_url=listing.external_url,
+        contact_phone=listing.contact_phone,
+        agency_name=listing.agency_name,
+        agent_name=listing.agent_name,
         photos=[PhotoResponse.model_validate(p) for p in sorted(listing.photos, key=lambda p: p.position)],
         price_history=[
             PriceHistoryItem(price=ph.price, observed_at=ph.observed_at.isoformat())

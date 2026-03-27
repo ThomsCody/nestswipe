@@ -73,7 +73,10 @@ IMPORTANT:
 - If the page is not a listing (error page, search results, homepage), return {"is_listing": false}.
 - Pay close attention to bedrooms vs rooms: "chambres" = bedrooms, "pièces" = rooms.
 - Floor: "rez-de-chaussée" / "RDC" = 0, "1er étage" = 1, etc.
-- For location: extract the MOST SPECIFIC neighborhood name available. Do not just say "Paris 16e" if the page mentions "Auteuil" or "Auteuil Nord" — include the quartier name."""
+- For location: extract the MOST SPECIFIC neighborhood name available. Do not just say "Paris 16e" if the page mentions "Auteuil" or "Auteuil Nord" — include the quartier name.
+- contact_phone: string — phone number of the agent or agency (formatted as found on page)
+- agency_name: string — name of the real estate agency
+- agent_name: string — name of the individual agent/contact person"""
 
 
 class ExtractedListing(BaseModel):
@@ -91,6 +94,9 @@ class ExtractedListing(BaseModel):
     source_id: str | None = None
     photo_urls: list[str] = []
     description: str | None = None
+    contact_phone: str | None = None
+    agency_name: str | None = None
+    agent_name: str | None = None
 
 
 async def extract_listing(api_key: str, email_html: str, source: str) -> ExtractedListing | None:
