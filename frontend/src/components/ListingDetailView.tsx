@@ -138,7 +138,7 @@ function ContactForm(props: ContactFormProps) {
 /* ------------------------------------------------------------------ */
 
 function HighlightedBody({ body }: { body: string }) {
-  const parts = body.split(/(@\w+)/g);
+  const parts = body.split(/((?<=^|\s)@\w+)/g);
   return (
     <p className="text-sm text-gray-700 mt-1">
       {parts.map((part, i) =>
