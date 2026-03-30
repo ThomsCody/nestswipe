@@ -95,7 +95,7 @@ def _extract_source_id(url: str, source: str) -> str | None:
         if match:
             return match.group(1)
         return None
-    elif source == "consultantsimmobilier":
+    elif source in ("consultantsimmobilier", "barnes"):
         # ap.immo URL like: https://ap.immo/p/86783633?u=...&p=...
         match = re.search(r"/p/(\d+)", url)
         if match:
