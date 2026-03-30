@@ -1,5 +1,5 @@
-import { useCallback, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useRef } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import client from "@/api/client";
 import type { Listing } from "@/types";
@@ -15,6 +15,34 @@ interface UserStatus {
 interface QueueData {
   listings: Listing[];
   remaining: number;
+}
+
+interface PollStatus {
+  is_polling: boolean;
+  started_at: string | null;
+}
+
+function PollingIndicator() {
+  return (
+    <span className="group relative inline-flex items-center align-middle ml-2">
+      <svg
+        className="w-4 h-4 text-indigo-500 animate-pulse"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+        />
+      </svg>
+      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs text-white bg-gray-800 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+        Analysing new emails&hellip;
+      </span>
+    </span>
+  );
 }
 
 function ListingCard({
@@ -112,6 +140,8 @@ function ListingCard({
 }
 
 export default function Swipe() {
+  const { id } = useParams<{ id?: string }>();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const { data, isLoading, isFetching, isError, refetch } = useQuery<QueueData>({
@@ -124,6 +154,23 @@ export default function Swipe() {
     queryFn: () => client.get("/auth/me").then((r) => r.data),
     staleTime: Infinity,
   });
+
+  const { data: pollStatus } = useQuery<PollStatus>({
+    queryKey: ["poll-status"],
+    queryFn: () => client.get("/listings/poll-status").then((r) => r.data),
+    refetchInterval: 5000,
+  });
+
+  // Auto-refetch queue when polling ends (transition true → false)
+  const wasPolling = useRef(false);
+  useEffect(() => {
+    if (pollStatus?.is_polling) {
+      wasPolling.current = true;
+    } else if (wasPolling.current) {
+      wasPolling.current = false;
+      queryClient.invalidateQueries({ queryKey: ["queue"] });
+    }
+  }, [pollStatus?.is_polling, queryClient]);
 
   const swipeMutation = useMutation({
     mutationFn: ({ id, action }: { id: number; action: string }) =>
@@ -154,14 +201,35 @@ export default function Swipe() {
   });
 
   const listings = data?.listings ?? [];
-  const currentListing = listings[0];
+  const currentListing = id
+    ? listings.find((l) => l.id === Number(id)) ?? listings[0]
+    : listings[0];
+
+  // Redirect to first listing when no ID in URL
+  useEffect(() => {
+    const first = listings[0];
+    if (!id && first) {
+      navigate(`/swipe/${first.id}`, { replace: true });
+    }
+  }, [id, listings, navigate]);
+
+  // If URL listing is no longer in queue, redirect to first available
+  useEffect(() => {
+    const first = listings[0];
+    if (id && first && !listings.find((l) => l.id === Number(id))) {
+      navigate(`/swipe/${first.id}`, { replace: true });
+    }
+  }, [id, listings, navigate]);
 
   const handleSwipe = useCallback(
     (action: "like" | "pass") => {
       if (!currentListing || swipeMutation.isPending) return;
+      const currentIndex = listings.findIndex((l) => l.id === currentListing.id);
+      const next = listings[currentIndex + 1];
+      navigate(next ? `/swipe/${next.id}` : "/swipe", { replace: true });
       swipeMutation.mutate({ id: currentListing.id, action });
     },
-    [currentListing, swipeMutation],
+    [currentListing, listings, swipeMutation, navigate],
   );
 
   // Keyboard shortcuts
@@ -219,6 +287,12 @@ export default function Swipe() {
           <>
             <h2 className="text-xl font-semibold text-gray-900 mb-4">All caught up!</h2>
             <p className="text-gray-500">No new listings to review. Check back after the next email poll.</p>
+            {pollStatus?.is_polling && (
+              <p className="mt-3 text-sm text-indigo-500 flex items-center gap-1.5">
+                <PollingIndicator />
+                Checking for new listings&hellip;
+              </p>
+            )}
           </>
         )}
       </div>
@@ -229,6 +303,7 @@ export default function Swipe() {
     <div className="flex flex-col items-center py-4">
       <p className="text-sm text-gray-400 mb-4">
         {data?.remaining ?? 0} listing{(data?.remaining ?? 0) !== 1 ? "s" : ""} remaining
+        {pollStatus?.is_polling && <PollingIndicator />}
         <span className="ml-3 text-xs">(← pass | like →)</span>
       </p>
       <ListingCard

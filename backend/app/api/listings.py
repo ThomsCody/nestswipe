@@ -8,9 +8,15 @@ from app.database import get_db
 from app.models.interaction import Favorite, SwipeAction, SwipeDirection
 from app.models.listing import Listing, ListingPhoto
 from app.models.user import User
+from app.scheduler import get_polling_state
 from app.schemas.listing import ListingResponse, PhotoResponse, PriceHistoryItem, QueueResponse, SwipeRequest
 
 router = APIRouter()
+
+
+@router.get("/poll-status")
+async def poll_status():
+    return get_polling_state()
 
 
 @router.get("/queue", response_model=QueueResponse)

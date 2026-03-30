@@ -13,24 +13,36 @@ logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
 
+_polling_state: dict = {"is_polling": False, "started_at": None}
+
+
+def get_polling_state() -> dict:
+    return _polling_state.copy()
+
 
 async def poll_emails_job():
+    _polling_state["is_polling"] = True
+    _polling_state["started_at"] = datetime.now(timezone.utc).isoformat()
     logger.info("Starting email poll job")
-    async with async_session() as db:
-        result = await db.execute(
-            select(User).where(
-                User.gmail_refresh_token.isnot(None),
-                User.openai_api_key.isnot(None),
+    try:
+        async with async_session() as db:
+            result = await db.execute(
+                select(User).where(
+                    User.gmail_refresh_token.isnot(None),
+                    User.openai_api_key.isnot(None),
+                )
             )
-        )
-        users = result.scalars().all()
-        for user in users:
-            try:
-                count = await process_emails_for_user(user, db)
-                if count > 0:
-                    logger.info("Processed %d emails for user %s", count, user.email)
-            except Exception:
-                logger.exception("Failed to process emails for user %s", user.id)
+            users = result.scalars().all()
+            for user in users:
+                try:
+                    count = await process_emails_for_user(user, db)
+                    if count > 0:
+                        logger.info("Processed %d emails for user %s", count, user.email)
+                except Exception:
+                    logger.exception("Failed to process emails for user %s", user.id)
+    finally:
+        _polling_state["is_polling"] = False
+        _polling_state["started_at"] = None
 
 
 async def _get_last_poll_time() -> datetime | None:

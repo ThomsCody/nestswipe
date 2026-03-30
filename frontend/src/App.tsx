@@ -32,6 +32,7 @@ export default function App() {
         }
       >
         <Route path="/swipe" element={<Swipe />} />
+        <Route path="/swipe/:id" element={<Swipe />} />
         <Route path="/favorites" element={<Favorites />} />
         <Route path="/favorites/:id" element={<FavoriteDetail />} />
         <Route path="/archives" element={<Archives />} />
