@@ -32,7 +32,8 @@ services:
   backend:
     build:
       context: ./backend
-      target: prod
+      target: deps
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--log-config", "log_config.yaml"]
     ports:
       - "8000:8000"
     environment:
@@ -55,6 +56,7 @@ services:
       DD_TRACE_ENABLED: "true"
       DD_LOGS_INJECTION: "true"
     volumes:
+      - ./backend:/app
       - ./oauth.json:/app/oauth.json:ro
     depends_on:
       postgres:
@@ -67,14 +69,15 @@ services:
   frontend:
     build:
       context: ./frontend
-      args:
-        VITE_DD_APPLICATION_ID: ${VITE_DD_APPLICATION_ID:-}
-        VITE_DD_CLIENT_TOKEN: ${VITE_DD_CLIENT_TOKEN:-}
-        VITE_DD_SITE: ${VITE_DD_SITE:-datadoghq.com}
-        VITE_DD_ENV: ${VITE_DD_ENV:-dev}
-        VITE_DD_ALLOWED_TRACING_URL: ${VITE_DD_ALLOWED_TRACING_URL:-http://localhost:8000}
+      target: dev
     ports:
-      - "5173:80"
+      - "5173:5173"
+    environment:
+      VITE_API_TARGET: http://backend:8000
+      VITE_DD_ENV: dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     depends_on:
       - backend
 

@@ -1,3 +1,9 @@
+FROM node:20-alpine AS dev
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm install
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json* ./
