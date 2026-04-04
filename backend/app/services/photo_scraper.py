@@ -10,6 +10,7 @@ PHOTO_CDNS = [
     "mms.seloger.com",
     "cdn.pap.fr/photos",
     "media.apimo.pro/cache",
+    "img.leboncoin.fr",
 ]
 
 # Patterns to exclude (logos, icons, tracking pixels, etc.)

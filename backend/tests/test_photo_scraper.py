@@ -26,6 +26,11 @@ class TestIsPropertyPhoto:
 
         assert _is_property_photo(url) is True
 
+    def test_leboncoin_cdn_jpg_is_accepted(self):
+        url = "https://img.leboncoin.fr/api/v1/lbcpb1/images/abc123.jpg"
+
+        assert _is_property_photo(url) is True
+
     def test_non_cdn_url_rejected(self):
         url = "https://example.com/photo.jpg"
 

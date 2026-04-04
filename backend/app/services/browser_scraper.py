@@ -39,6 +39,7 @@ EXCLUDE_PATTERNS = [
 WARMUP_URLS = {
     "seloger": "https://www.seloger.com/",
     "pap": "https://www.pap.fr/",
+    "leboncoin": "https://www.leboncoin.fr/",
 }
 
 HEADERS = {
@@ -101,6 +102,10 @@ def _extract_source_id(url: str, source: str) -> str | None:
         if match:
             return match.group(1)
         return None
+    elif source == "leboncoin":
+        # URL like: https://www.leboncoin.fr/vi/3173154827.htm
+        match = re.search(r"/vi/(\d+)\.htm", url)
+        return match.group(1) if match else None
     return None
 
 

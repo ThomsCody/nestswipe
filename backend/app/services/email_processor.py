@@ -32,6 +32,7 @@ SOURCES = {
     "pap.fr": "pap",
     "consultantsimmobilier.com": "consultantsimmobilier",
     "barnes-international.com": "barnes",
+    "no.reply@leboncoin.fr": "leboncoin",
 }
 
 
@@ -62,9 +63,15 @@ def _build_query(last_poll: datetime | None) -> str:
 
 def _detect_source(from_header: str) -> str:
     from_lower = from_header.lower()
-    for domain, name in SOURCES.items():
-        if domain in from_lower:
-            return name
+    for key, name in SOURCES.items():
+        if "@" in key:
+            # Full email address match — avoids matching other subdomains
+            # (e.g. messagerie.leboncoin.fr must NOT match)
+            if key in from_lower:
+                return name
+        else:
+            if key in from_lower:
+                return name
     return "unknown"
 
 
