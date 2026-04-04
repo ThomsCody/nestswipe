@@ -74,6 +74,7 @@ IMPORTANT:
 - Pay close attention to bedrooms vs rooms: "chambres" = bedrooms, "pièces" = rooms.
 - Floor: "rez-de-chaussée" / "RDC" = 0, "1er étage" = 1, etc.
 - For location: extract the MOST SPECIFIC neighborhood name available. Do not just say "Paris 16e" if the page mentions "Auteuil" or "Auteuil Nord" — include the quartier name.
+- LOCATION vs AGENCY ADDRESS: The page will often show BOTH the property location AND the agency/agent office address. These are DIFFERENT. For city, district, and location_detail, use ONLY the property location (where the apartment/house is), NEVER the agency office address. The agency address typically appears near the agent name, phone number, or in a "contact" / "about the agency" section. Ignore it for location fields.
 - contact_phone: string — phone number of the agent or agency (formatted as found on page)
 - agency_name: string — name of the real estate agency
 - agent_name: string — name of the individual agent/contact person"""
