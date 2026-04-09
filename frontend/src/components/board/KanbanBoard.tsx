@@ -10,7 +10,9 @@ import {
   type DragStartEvent,
   type DragOverEvent,
 } from "@dnd-kit/core";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import client from "@/api/client";
 import KanbanColumn from "./KanbanColumn";
 import KanbanCard from "./KanbanCard";
 import type { FavoriteItem, HouseholdMember } from "./KanbanCard";
@@ -18,36 +20,19 @@ import type { ColumnConfig } from "./KanbanColumn";
 
 const ARCHIVE_ID = "__archive__";
 
-const COLUMNS: ColumnConfig[] = [
-  {
-    id: "to_contact",
-    label: "A contacter",
-    color: "text-blue-700",
-    bg: "bg-blue-50",
-    ring: "bg-blue-500",
-  },
-  {
-    id: "visit_planned",
-    label: "Visite pr\u00e9vue",
-    color: "text-amber-700",
-    bg: "bg-amber-50",
-    ring: "bg-amber-500",
-  },
-  {
-    id: "offer_made",
-    label: "Offre faite",
-    color: "text-emerald-700",
-    bg: "bg-emerald-50",
-    ring: "bg-emerald-500",
-  },
-  {
-    id: "nogo",
-    label: "No Go",
-    color: "text-red-700",
-    bg: "bg-red-50",
-    ring: "bg-red-500",
-  },
-];
+const STATUS_COLORS: Record<string, { color: string; bg: string; ring: string }> = {
+  to_contact: { color: "text-blue-700", bg: "bg-blue-50", ring: "bg-blue-500" },
+  visit_planned: { color: "text-amber-700", bg: "bg-amber-50", ring: "bg-amber-500" },
+  offer_made: { color: "text-emerald-700", bg: "bg-emerald-50", ring: "bg-emerald-500" },
+  nogo: { color: "text-red-700", bg: "bg-red-50", ring: "bg-red-500" },
+};
+
+const DEFAULT_COLOR = { color: "text-gray-700", bg: "bg-gray-50", ring: "bg-gray-500" };
+
+interface StatusDTO {
+  id: string;
+  label: string;
+}
 
 function ArchiveDropZone({ visible }: { visible: boolean }) {
   const { setNodeRef, isOver } = useDroppable({ id: ARCHIVE_ID });
@@ -78,6 +63,22 @@ interface KanbanBoardProps {
 export default function KanbanBoard({ items, members, onStatusChange, onArchive, onOwnerChange }: KanbanBoardProps) {
   const [activeItem, setActiveItem] = useState<FavoriteItem | null>(null);
 
+  const { data: statuses } = useQuery<StatusDTO[]>({
+    queryKey: ["favorite-statuses"],
+    queryFn: () => client.get("/favorites/statuses").then((r) => r.data),
+    staleTime: Infinity,
+  });
+
+  const columns: ColumnConfig[] = useMemo(
+    () =>
+      (statuses ?? []).map((s) => ({
+        id: s.id,
+        label: s.label,
+        ...(STATUS_COLORS[s.id] ?? DEFAULT_COLOR),
+      })),
+    [statuses],
+  );
+
   const pointerSensor = useSensor(PointerSensor, {
     activationConstraint: { distance: 8 },
   });
@@ -86,7 +87,7 @@ export default function KanbanBoard({ items, members, onStatusChange, onArchive,
   });
   const sensors = useSensors(pointerSensor, touchSensor);
 
-  const grouped = COLUMNS.map((col) => ({
+  const grouped = columns.map((col) => ({
     config: col,
     items: items.filter((i) => i.status === col.id),
   }));
@@ -115,7 +116,7 @@ export default function KanbanBoard({ items, members, onStatusChange, onArchive,
 
     // Determine target column: either dropped on a column (droppable) or on a card
     let targetStatus: string | undefined;
-    const overColumn = COLUMNS.find((c) => c.id === over.id);
+    const overColumn = columns.find((c) => c.id === over.id);
     if (overColumn) {
       targetStatus = overColumn.id;
     } else {

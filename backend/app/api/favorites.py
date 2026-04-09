@@ -27,6 +27,21 @@ from app.services.email import send_mention_email
 
 router = APIRouter()
 
+FAVORITE_STATUS_LABELS = {
+    FavoriteStatus.to_contact: "A contacter",
+    FavoriteStatus.visit_planned: "Visite prévue",
+    FavoriteStatus.offer_made: "Offre faite",
+    FavoriteStatus.nogo: "No Go",
+}
+
+
+@router.get("/statuses")
+async def list_statuses():
+    return [
+        {"id": s.value, "label": label}
+        for s, label in FAVORITE_STATUS_LABELS.items()
+    ]
+
 
 def _listing_response(listing: Listing) -> ListingResponse:
     return ListingResponse(

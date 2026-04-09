@@ -67,6 +67,12 @@ export default function FavoriteDetail() {
     staleTime: Infinity,
   });
 
+  const { data: statuses } = useQuery<{ id: string; label: string }[]>({
+    queryKey: ["favorite-statuses"],
+    queryFn: () => client.get("/favorites/statuses").then((r) => r.data),
+    staleTime: Infinity,
+  });
+
   useEffect(() => {
     if (data) {
       setVisitDate(data.visit_date ? data.visit_date.slice(0, 16) : "");
@@ -139,9 +145,9 @@ export default function FavoriteDetail() {
                 onChange={(e) => updateMutation.mutate({ status: e.target.value })}
                 className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
               >
-                <option value="to_contact">A contacter</option>
-                <option value="visit_planned">Visite pr&eacute;vue</option>
-                <option value="offer_made">Offre faite</option>
+                {statuses?.map((s) => (
+                  <option key={s.id} value={s.id}>{s.label}</option>
+                ))}
               </select>
             </div>
             <div>
