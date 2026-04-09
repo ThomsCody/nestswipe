@@ -4,6 +4,7 @@ import client from "@/api/client";
 import KanbanBoard from "@/components/board/KanbanBoard";
 import OwnerFilter from "@/components/board/OwnerFilter";
 import ErrorBox from "@/components/ErrorBox";
+import ImportUrlButton from "@/components/ImportUrlButton";
 import type { FavoriteItem } from "@/components/board/KanbanCard";
 
 interface FavoritesData {
@@ -138,7 +139,10 @@ export default function Favorites() {
   if (!data?.favorites.length && ownerFilter === null) {
     return (
       <div>
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Favorites</h2>
+        <div className="flex items-center gap-3 mb-4">
+          <h2 className="text-xl font-semibold text-gray-900">Favorites</h2>
+          <ImportUrlButton />
+        </div>
         <p className="text-gray-500">No favorites yet. Swipe right on listings you like!</p>
       </div>
     );
@@ -146,9 +150,12 @@ export default function Favorites() {
 
   return (
     <div>
-      <h2 className="text-xl font-semibold text-gray-900 mb-4">
-        Favorites ({data?.total ?? 0})
-      </h2>
+      <div className="flex items-center gap-3 mb-4">
+        <h2 className="text-xl font-semibold text-gray-900">
+          Favorites ({data?.total ?? 0})
+        </h2>
+        <ImportUrlButton />
+      </div>
       {household && (
         <div className="mb-4">
           <OwnerFilter

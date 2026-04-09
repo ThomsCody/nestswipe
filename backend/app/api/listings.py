@@ -9,7 +9,17 @@ from app.models.interaction import Favorite, SwipeAction, SwipeDirection
 from app.models.listing import Listing, ListingPhoto
 from app.models.user import User
 from app.scheduler import get_polling_state
-from app.schemas.listing import ListingResponse, PhotoResponse, PriceHistoryItem, QueueResponse, SwipeRequest
+from app.schemas.listing import (
+    ImportUrlRequest,
+    ImportUrlResponse,
+    ListingResponse,
+    PhotoResponse,
+    PriceHistoryItem,
+    QueueResponse,
+    SwipeRequest,
+)
+from app.services.import_listing import ImportError as ImportListingError
+from app.services.import_listing import import_listing_from_url
 
 router = APIRouter()
 
@@ -86,6 +96,60 @@ async def get_queue(
             for l in listings
         ],
         remaining=remaining,
+    )
+
+
+@router.post("/import", response_model=ImportUrlResponse)
+async def import_url(
+    body: ImportUrlRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        result = await import_listing_from_url(body.url, user, db)
+    except ImportListingError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
+    # Re-fetch with eager loading to avoid lazy-load in async context
+    listing_result = await db.execute(
+        select(Listing)
+        .options(selectinload(Listing.photos), selectinload(Listing.price_history))
+        .where(Listing.id == result.listing.id)
+    )
+    listing = listing_result.scalar_one()
+
+    photos = sorted(listing.photos, key=lambda p: p.position)
+    price_history = sorted(listing.price_history, key=lambda ph: ph.observed_at)
+
+    return ImportUrlResponse(
+        favorite_id=result.favorite.id,
+        listing=ListingResponse(
+            id=listing.id,
+            source=listing.source,
+            title=listing.title,
+            description=listing.description,
+            price=listing.price,
+            sqm=listing.sqm,
+            price_per_sqm=listing.price_per_sqm,
+            bedrooms=listing.bedrooms,
+            rooms=listing.rooms,
+            floor=listing.floor,
+            city=listing.city,
+            district=listing.district,
+            location_detail=listing.location_detail,
+            external_url=listing.external_url,
+            contact_phone=listing.contact_phone,
+            agency_name=listing.agency_name,
+            agent_name=listing.agent_name,
+            photos=[PhotoResponse.model_validate(p) for p in photos],
+            price_history=[
+                PriceHistoryItem(price=ph.price, observed_at=ph.observed_at.isoformat())
+                for ph in price_history
+            ],
+            last_seen_at=listing.last_seen_at.isoformat() if listing.last_seen_at else None,
+        ),
+        created=result.created,
+        already_favorited=result.already_favorited,
     )
 
 

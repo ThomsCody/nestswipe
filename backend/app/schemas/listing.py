@@ -64,3 +64,14 @@ class ArchiveDetailResponse(BaseModel):
     listing: ListingResponse
     price_history: list[PriceHistoryItem]
     passed_at: str
+
+
+class ImportUrlRequest(BaseModel):
+    url: str
+
+
+class ImportUrlResponse(BaseModel):
+    favorite_id: int
+    listing: ListingResponse
+    created: bool
+    already_favorited: bool

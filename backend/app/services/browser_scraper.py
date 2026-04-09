@@ -42,6 +42,30 @@ WARMUP_URLS = {
     "leboncoin": "https://www.leboncoin.fr/",
 }
 
+URL_SOURCE_MAP = {
+    "seloger.com": "seloger",
+    "bellesdemeures.com": "seloger",
+    "pap.fr": "pap",
+    "consultantsimmobilier.com": "consultantsimmobilier",
+    "ap.immo": "consultantsimmobilier",
+    "barnes-international.com": "barnes",
+    "leboncoin.fr": "leboncoin",
+}
+
+
+def detect_source_from_url(url: str) -> str | None:
+    """Detect listing source from a URL's hostname. Returns None for unknown domains."""
+    try:
+        hostname = urlparse(url).hostname or ""
+    except Exception:
+        return None
+    hostname = hostname.lower().removeprefix("www.")
+    for domain, source in URL_SOURCE_MAP.items():
+        if hostname == domain or hostname.endswith(f".{domain}"):
+            return source
+    return None
+
+
 HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
     "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
