@@ -1,7 +1,7 @@
 import asyncio
 import base64
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -35,6 +35,11 @@ SOURCES = {
     "no.reply@leboncoin.fr": "leboncoin",
 }
 
+# Gmail may delay indexing emails by a few minutes after delivery.
+# Overlap the query window by this amount so we don't miss emails that
+# arrived but weren't searchable yet during the previous poll cycle.
+GMAIL_INDEX_LAG = timedelta(minutes=10)
+
 
 def _get_gmail_service(refresh_token: str):
     creds = Credentials(
@@ -52,8 +57,10 @@ def _build_query(last_poll: datetime | None) -> str:
     sources = " OR ".join(f"from:{s}" for s in SOURCES)
     query = f"({sources})"
     if last_poll:
-        # Use epoch seconds for second-level precision (YYYY/MM/DD is day-level)
-        epoch = int(last_poll.timestamp())
+        # Subtract a safety margin so emails that Gmail was slow to index
+        # aren't missed.  Duplicates are handled downstream by the dedup layer.
+        safe_cutoff = last_poll - GMAIL_INDEX_LAG
+        epoch = int(safe_cutoff.timestamp())
         query += f" after:{epoch}"
     else:
         # First run: only fetch recent emails (tracking URLs expire after ~7 days)
