@@ -8,6 +8,7 @@ from app.config import settings
 from app.database import async_session
 from app.models.user import User
 from app.services.email_processor import process_emails_for_user
+from app.services.photo_cleanup import cleanup_stale_photos
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,15 @@ async def poll_emails_job():
         _polling_state["started_at"] = None
 
 
+async def photo_cleanup_job():
+    logger.info("Starting daily photo cleanup job")
+    try:
+        cleaned = await cleanup_stale_photos()
+        logger.info("Photo cleanup complete: %d listing(s) cleaned", cleaned)
+    except Exception:
+        logger.exception("Photo cleanup job failed")
+
+
 async def _get_last_poll_time() -> datetime | None:
     """Return the most recent last_email_poll across all users."""
     async with async_session() as db:
@@ -70,6 +80,14 @@ async def start_scheduler():
         minutes=settings.email_poll_interval_minutes,
         next_run_time=next_run,
         id="poll_emails",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        photo_cleanup_job,
+        "cron",
+        hour=4,
+        minute=0,
+        id="photo_cleanup",
         replace_existing=True,
     )
     scheduler.start()
