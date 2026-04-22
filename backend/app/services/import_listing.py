@@ -52,9 +52,18 @@ async def import_listing_from_url(
     if not source:
         raise ImportError("Unsupported domain. Supported: seloger, pap, leboncoin, consultantsimmobilier, barnes.")
 
-    # 2. Check API key
-    if not user.openai_api_key:
-        raise ImportError("OpenAI API key required. Set it in Settings first.")
+    # 2. Resolve API key: user's own, otherwise any household member's
+    api_key = user.openai_api_key
+    if not api_key:
+        result = await db.execute(
+            select(User.openai_api_key).where(
+                User.household_id == user.household_id,
+                User.openai_api_key.isnot(None),
+            ).limit(1)
+        )
+        api_key = result.scalar_one_or_none()
+    if not api_key:
+        raise ImportError("No OpenAI API key available. You or a household member must set one in Settings.")
 
     # 3. Scrape
     scraped = await scrape_listing(url, source)
@@ -62,7 +71,7 @@ async def import_listing_from_url(
         raise ImportError("Could not load the listing page. The site may be blocking requests.", status_code=502)
 
     # 4. LLM extraction
-    extracted = await extract_listing_from_page(user.openai_api_key, scraped.page_text, source)
+    extracted = await extract_listing_from_page(api_key, scraped.page_text, source)
     if not extracted or not extracted.title:
         raise ImportError("Could not extract listing data from the page.", status_code=502)
 
@@ -97,7 +106,7 @@ async def import_listing_from_url(
                 photo_phashes.append(phash)
 
     if photo_data:
-        photo_data = await classify_photos(user.openai_api_key, photo_data)
+        photo_data = await classify_photos(api_key, photo_data)
         photo_phashes = [phash for _, phash, _ in photo_data if phash]
 
     # 6. Check for duplicates

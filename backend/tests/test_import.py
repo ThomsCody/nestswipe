@@ -48,11 +48,11 @@ async def test_import_unknown_domain_400(client, auth_headers):
     assert "Unsupported domain" in resp.json()["detail"]
 
 
-async def test_import_missing_api_key_400(client, auth_headers):
+async def test_import_no_api_key_in_household_400(client, auth_headers):
     resp = await client.post(
         "/api/v1/listings/import",
         json={"url": "https://www.leboncoin.fr/vi/123.htm"},
         headers=auth_headers,
     )
     assert resp.status_code == 400
-    assert "API key" in resp.json()["detail"]
+    assert "No OpenAI API key available" in resp.json()["detail"]
