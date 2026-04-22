@@ -11,7 +11,7 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 # Sources that require proxy to bypass bot protection
-PROXY_SOURCES = {"seloger"}
+PROXY_SOURCES = {"seloger", "leboncoin"}
 
 REQUEST_TIMEOUT = 30
 MAX_PHOTOS_PER_LISTING = 30
@@ -128,7 +128,8 @@ def _extract_source_id(url: str, source: str) -> str | None:
         return None
     elif source == "leboncoin":
         # URL like: https://www.leboncoin.fr/vi/3173154827.htm
-        match = re.search(r"/vi/(\d+)\.htm", url)
+        # or: https://www.leboncoin.fr/ad/ventes_immobilieres/3183368834
+        match = re.search(r"/(?:vi|ad/[^/]+)/(\d+)", url)
         return match.group(1) if match else None
     return None
 

@@ -28,6 +28,9 @@ class TestDetectSourceFromUrl:
     def test_leboncoin(self):
         assert detect_source_from_url("https://www.leboncoin.fr/vi/3173154827.htm") == "leboncoin"
 
+    def test_leboncoin_ad_url(self):
+        assert detect_source_from_url("https://www.leboncoin.fr/ad/ventes_immobilieres/3183368834") == "leboncoin"
+
     def test_unknown_domain(self):
         assert detect_source_from_url("https://www.example.com/listing/123") is None
 
