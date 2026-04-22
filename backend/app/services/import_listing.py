@@ -62,6 +62,8 @@ async def import_listing_from_url(
             ).limit(1)
         )
         api_key = result.scalar_one_or_none()
+        if api_key:
+            logger.info("User %d has no OpenAI key, falling back to household %d key", user.id, user.household_id)
     if not api_key:
         raise ImportError("No OpenAI API key available. You or a household member must set one in Settings.")
 
