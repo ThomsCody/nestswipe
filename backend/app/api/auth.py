@@ -133,13 +133,22 @@ async def refresh_token(user: User = Depends(get_current_user)):
 
 
 @router.get("/me", response_model=UserResponse)
-async def me(user: User = Depends(get_current_user)):
+async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    has_api_key = bool(user.openai_api_key)
+    if not has_api_key:
+        result = await db.execute(
+            select(User.id).where(
+                User.household_id == user.household_id,
+                User.openai_api_key.isnot(None),
+            ).limit(1)
+        )
+        has_api_key = result.scalar_one_or_none() is not None
     return UserResponse(
         id=user.id,
         email=user.email,
         name=user.name,
         picture=user.picture,
         household_id=user.household_id,
-        has_api_key=bool(user.openai_api_key),
+        has_api_key=has_api_key,
         has_gmail_token=bool(user.gmail_refresh_token),
     )
