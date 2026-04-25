@@ -44,9 +44,9 @@ services:
       MINIO_BUCKET: ${MINIO_BUCKET:-listing-photos}
       JWT_SECRET: ${JWT_SECRET:-change-me-to-a-random-secret}
       EMAIL_POLL_INTERVAL_MINUTES: ${EMAIL_POLL_INTERVAL_MINUTES:-5}
-      PROXY_HOST: ${PROXY_HOST:-}
-      PROXY_USER: ${PROXY_USER:-}
-      PROXY_PASSWORD: ${PROXY_PASSWORD:-}
+      PROXY_HOST: ""
+      PROXY_USER: ""
+      PROXY_PASSWORD: ""
       SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
       SENDGRID_FROM_EMAIL: ${SENDGRID_FROM_EMAIL:-}
       # Datadog APM
