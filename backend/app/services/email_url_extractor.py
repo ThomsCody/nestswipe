@@ -30,6 +30,8 @@ Rules:
   that is fine — return its index.
 - Do NOT include: unsubscribe, manage alerts, social media, app store, promotional,
   mortgage calculator, homepage, or legal/privacy links.
+- Do NOT include agency/network profile links such as "En savoir plus" about an agency,
+  "Découvrir le réseau", or similar — these lead to the agency page, NOT a listing.
 - If no listing links are found, return {"indices": []}."""
 
 # Max characters to show for each URL in the LLM table
