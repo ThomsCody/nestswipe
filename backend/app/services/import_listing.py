@@ -50,7 +50,7 @@ async def import_listing_from_url(
     # 1. Detect source
     source = detect_source_from_url(url)
     if not source:
-        raise ImportError("Unsupported domain. Supported: seloger, pap, leboncoin, consultantsimmobilier, barnes.")
+        raise ImportError("Unsupported domain. Supported: seloger, pap, leboncoin, consultantsimmobilier, barnes, junot.")
 
     # 2. Resolve API key: user's own, otherwise any household member's
     api_key = user.openai_api_key
@@ -78,7 +78,7 @@ async def import_listing_from_url(
         raise ImportError("Could not extract listing data from the page.", status_code=502)
 
     # Set URL — keep original for ap.immo links (they carry auth params)
-    if source in ("consultantsimmobilier", "barnes") and "ap.immo" in url:
+    if source in ("consultantsimmobilier", "barnes", "junot") and "ap.immo" in url:
         extracted.external_url = url
     else:
         extracted.external_url = scraped.resolved_url or url

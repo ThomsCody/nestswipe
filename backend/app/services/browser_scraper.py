@@ -49,6 +49,7 @@ URL_SOURCE_MAP = {
     "consultantsimmobilier.com": "consultantsimmobilier",
     "ap.immo": "consultantsimmobilier",
     "barnes-international.com": "barnes",
+    "junot.fr": "junot",
     "leboncoin.fr": "leboncoin",
 }
 
@@ -120,7 +121,7 @@ def _extract_source_id(url: str, source: str) -> str | None:
         if match:
             return match.group(1)
         return None
-    elif source in ("consultantsimmobilier", "barnes"):
+    elif source in ("consultantsimmobilier", "barnes", "junot"):
         # ap.immo URL like: https://ap.immo/p/86783633?u=...&p=...
         match = re.search(r"/p/(\d+)", url)
         if match:

@@ -33,7 +33,7 @@ SOURCES = {
     "consultantsimmobilier.com": "consultantsimmobilier",
     "barnes-international.com": "barnes",
     "no.reply@leboncoin.fr": "leboncoin",
-    "junot.fr": "consultantsimmobilier",
+    "junot.fr": "junot",
 }
 
 # Gmail may delay indexing emails by a few minutes after delivery.
@@ -199,7 +199,7 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                 # Use resolved URL — except for consultantsimmobilier where
                 # the original ap.immo link carries auth query params (u=, p=)
                 # that are required to view the listing without an extranet login.
-                if source in ("consultantsimmobilier", "barnes") and "ap.immo" in url:
+                if source in ("consultantsimmobilier", "barnes", "junot") and "ap.immo" in url:
                     extracted.external_url = url
                 else:
                     extracted.external_url = scraped.resolved_url
