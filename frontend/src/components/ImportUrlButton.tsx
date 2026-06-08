@@ -71,58 +71,60 @@ export default function ImportUrlButton() {
   }
 
   return (
-    <div className="inline-flex items-center gap-2">
+    <div className="w-full sm:w-auto">
       <form
         onSubmit={(e) => {
           e.preventDefault();
           if (url.trim()) mutation.mutate(url.trim());
         }}
-        className="inline-flex items-center gap-2"
+        className="flex flex-col gap-2 sm:flex-row sm:items-center"
       >
-        <input
-          ref={inputRef}
-          type="url"
-          value={url}
-          onChange={(e) => {
-            setUrl(e.target.value);
-            setMessage(null);
-          }}
-          placeholder="Paste listing URL..."
-          disabled={mutation.isPending}
-          className="w-72 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-50"
-        />
-        <button
-          type="submit"
-          disabled={!url.trim() || mutation.isPending}
-          className="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-50 transition-colors"
-        >
-          {mutation.isPending ? (
-            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-          ) : (
-            "Import"
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setOpen(false);
-            setUrl("");
-            setMessage(null);
-          }}
-          disabled={mutation.isPending}
-          className="px-2 py-1.5 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50"
-        >
-          Cancel
-        </button>
+        <div className="flex items-center gap-2 min-w-0">
+          <input
+            ref={inputRef}
+            type="url"
+            value={url}
+            onChange={(e) => {
+              setUrl(e.target.value);
+              setMessage(null);
+            }}
+            placeholder="Paste listing URL..."
+            disabled={mutation.isPending}
+            className="w-full sm:w-72 min-w-0 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-50"
+          />
+          <button
+            type="submit"
+            disabled={!url.trim() || mutation.isPending}
+            className="shrink-0 px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-50 transition-colors"
+          >
+            {mutation.isPending ? (
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            ) : (
+              "Import"
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              setUrl("");
+              setMessage(null);
+            }}
+            disabled={mutation.isPending}
+            className="shrink-0 px-2 py-1.5 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        </div>
+        {message && (
+          <span className={`text-sm ${message.ok ? "text-green-600" : "text-red-600"}`}>
+            {message.text}
+          </span>
+        )}
       </form>
-      {message && (
-        <span className={`text-sm ${message.ok ? "text-green-600" : "text-red-600"}`}>
-          {message.text}
-        </span>
-      )}
     </div>
   );
 }

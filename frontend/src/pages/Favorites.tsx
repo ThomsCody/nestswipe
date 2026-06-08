@@ -139,7 +139,7 @@ export default function Favorites() {
   if (!data?.favorites.length && ownerFilter === null) {
     return (
       <div>
-        <div className="flex items-center gap-3 mb-4">
+        <div className="flex flex-wrap items-center gap-3 mb-4">
           <h2 className="text-xl font-semibold text-gray-900">Favorites</h2>
           <ImportUrlButton />
         </div>
@@ -150,7 +150,7 @@ export default function Favorites() {
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
         <h2 className="text-xl font-semibold text-gray-900">
           Favorites ({data?.total ?? 0})
         </h2>
