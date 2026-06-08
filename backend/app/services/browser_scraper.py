@@ -42,6 +42,13 @@ WARMUP_URLS = {
     "leboncoin": "https://www.leboncoin.fr/",
 }
 
+# Referer to send when fetching a listing directly (not via an email redirect chain)
+LISTING_REFERERS = {
+    "seloger": "https://www.seloger.com/immobilier/achat/",
+    "pap": "https://www.pap.fr/annonce/ventes-immobilieres",
+    "leboncoin": "https://www.leboncoin.fr/recherche?category=9&real_estate_type=2",
+}
+
 URL_SOURCE_MAP = {
     "seloger.com": "seloger",
     "bellesdemeures.com": "seloger",
@@ -289,9 +296,12 @@ async def scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
                     logger.debug("Warm-up request to %s failed (non-critical)", warmup_url)
 
             # Fetch the actual listing page (follows redirects automatically)
+            listing_headers = HEADERS.copy()
+            if referer := LISTING_REFERERS.get(source):
+                listing_headers["Referer"] = referer
             resp = await session.get(
                 tracking_url,
-                headers=HEADERS,
+                headers=listing_headers,
                 timeout=REQUEST_TIMEOUT,
                 allow_redirects=True,
             )

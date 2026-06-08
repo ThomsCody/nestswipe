@@ -11,7 +11,7 @@ from fastapi import FastAPI
 logging.basicConfig(level=logging.INFO)
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import archives, auth, favorites, household, listings, notifications, photos, settings as settings_router
+from app.api import archives, auth, favorites, household, listings, notifications, photos, settings as settings_router, stats as stats_router
 from app.config import settings
 
 
@@ -42,6 +42,7 @@ app.include_router(household.router, prefix="/api/v1/household", tags=["househol
 app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["notifications"])
 app.include_router(settings_router.router, prefix="/api/v1/settings", tags=["settings"])
 app.include_router(photos.router, prefix="/api/v1/photos", tags=["photos"])
+app.include_router(stats_router.router, prefix="/api/v1/stats", tags=["stats"])
 
 
 @app.get("/api/v1/health")

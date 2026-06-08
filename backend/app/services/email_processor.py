@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.listing import Listing, ListingPhoto, PriceHistory
+from app.models.parse_attempt import ParseAttempt
 from app.models.user import User
 from app.services.browser_scraper import scrape_listing, MAX_PHOTOS_PER_LISTING
 from app.services.duplicate_detector import compute_fingerprint, find_duplicate
@@ -153,6 +154,17 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                 logger.warning("extraction_failed: no candidate URLs found",
                                extra={"event": "extraction_failed", "reason": "no_urls",
                                       "source": source, "email_id": msg_meta["id"]})
+                db.add(ParseAttempt(
+                    household_id=user.household_id,
+                    user_id=user.id,
+                    source=source,
+                    email_id=msg_meta["id"],
+                    url=None,
+                    status="failed",
+                    fail_reason="no_urls",
+                ))
+                await db.flush()
+                await db.commit()
                 continue
             logger.info("Email %s: found %d candidate URL(s)", msg_meta["id"], len(candidate_urls))
 
@@ -170,11 +182,29 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                     logger.warning("extraction_failed: no valid resolved page",
                                    extra={"event": "extraction_failed", "reason": "no_resolved_url",
                                           "source": source, "url": url})
+                    db.add(ParseAttempt(
+                        household_id=user.household_id,
+                        user_id=user.id,
+                        source=source,
+                        email_id=msg_meta["id"],
+                        url=url,
+                        status="failed",
+                        fail_reason="no_resolved_url",
+                    ))
                     continue
                 if not scraped.page_text:
                     logger.warning("extraction_failed: no page text extracted",
                                    extra={"event": "extraction_failed", "reason": "no_page_text",
                                           "source": source, "url": url})
+                    db.add(ParseAttempt(
+                        household_id=user.household_id,
+                        user_id=user.id,
+                        source=source,
+                        email_id=msg_meta["id"],
+                        url=url,
+                        status="failed",
+                        fail_reason="no_page_text",
+                    ))
                     continue
                 if scraped.source_id and scraped.source_id in seen_source_ids:
                     logger.info("Skipping duplicate source_id %s: %s", scraped.source_id, url)
@@ -194,6 +224,15 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                     logger.warning("extraction_failed: LLM found no listing",
                                    extra={"event": "extraction_failed", "reason": "llm_no_listing",
                                           "source": source, "url": url})
+                    db.add(ParseAttempt(
+                        household_id=user.household_id,
+                        user_id=user.id,
+                        source=source,
+                        email_id=msg_meta["id"],
+                        url=url,
+                        status="failed",
+                        fail_reason="llm_no_listing",
+                    ))
                     continue
 
                 # Use resolved URL — except for consultantsimmobilier where
@@ -254,6 +293,15 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                     logger.warning("extraction_failed: no usable photos",
                                    extra={"event": "extraction_failed", "reason": "no_photos",
                                           "source": source, "url": url})
+                    db.add(ParseAttempt(
+                        household_id=user.household_id,
+                        user_id=user.id,
+                        source=source,
+                        email_id=msg_meta["id"],
+                        url=url,
+                        status="failed",
+                        fail_reason="no_photos",
+                    ))
                     continue
 
                 # Check for duplicates
@@ -324,6 +372,15 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
 
                     logger.info("Created new listing %d: %s", listing.id, listing.title)
 
+                db.add(ParseAttempt(
+                    household_id=user.household_id,
+                    user_id=user.id,
+                    source=source,
+                    email_id=msg_meta["id"],
+                    url=url,
+                    status="success",
+                    fail_reason=None,
+                ))
                 processed += 1
                 # Commit after each listing so progress is saved
                 await db.commit()

@@ -3,6 +3,141 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import client from "@/api/client";
 import ErrorBox from "@/components/ErrorBox";
 
+type StatsPeriod = "day" | "week" | "month";
+
+interface SourceStats {
+  emails: number;
+  success: number;
+  failed: number;
+}
+
+interface StatsData {
+  period: StatsPeriod;
+  offset: number;
+  period_label: string;
+  period_start: string;
+  period_end: string;
+  emails_parsed: number;
+  listings_success: number;
+  listings_failed: number;
+  by_source: Record<string, SourceStats>;
+}
+
+function StatisticsSection() {
+  const [period, setPeriod] = useState<StatsPeriod>("week");
+  const [offset, setOffset] = useState(0);
+
+  const { data: stats, isLoading } = useQuery<StatsData>({
+    queryKey: ["stats", period, offset],
+    queryFn: () =>
+      client.get(`/stats?period=${period}&offset=${offset}`).then((r) => r.data),
+  });
+
+  const handlePeriodChange = (newPeriod: StatsPeriod) => {
+    setPeriod(newPeriod);
+    setOffset(0);
+  };
+
+  const PERIOD_TABS: { key: StatsPeriod; label: string }[] = [
+    { key: "day", label: "Day" },
+    { key: "week", label: "Week" },
+    { key: "month", label: "Month" },
+  ];
+
+  return (
+    <section className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <h3 className="text-sm font-medium text-gray-700 mb-4">Statistics</h3>
+
+      {/* Period tabs */}
+      <div className="flex gap-1 mb-4">
+        {PERIOD_TABS.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => handlePeriodChange(key)}
+            className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+              period === key
+                ? "bg-indigo-600 text-white"
+                : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Period navigator */}
+      <div className="flex items-center justify-between mb-4">
+        <button
+          onClick={() => setOffset((o) => o - 1)}
+          className="p-1 text-gray-400 hover:text-gray-700 rounded"
+          aria-label="Previous period"
+        >
+          ←
+        </button>
+        <span className="text-sm font-medium text-gray-700">
+          {isLoading ? "…" : stats?.period_label ?? ""}
+        </span>
+        <button
+          onClick={() => setOffset((o) => o + 1)}
+          disabled={offset >= 0}
+          className="p-1 text-gray-400 hover:text-gray-700 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+          aria-label="Next period"
+        >
+          →
+        </button>
+      </div>
+
+      {/* Summary cards */}
+      {isLoading ? (
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="bg-gray-100 rounded-lg p-3 animate-pulse h-16" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="bg-gray-50 rounded-lg p-3 text-center">
+            <p className="text-2xl font-semibold text-gray-900">{stats?.emails_parsed ?? 0}</p>
+            <p className="text-xs text-gray-500 mt-1">Emails parsed</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3 text-center">
+            <p className="text-2xl font-semibold text-indigo-600">{stats?.listings_success ?? 0}</p>
+            <p className="text-xs text-gray-500 mt-1">Listings found</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3 text-center">
+            <p className="text-2xl font-semibold text-red-500">{stats?.listings_failed ?? 0}</p>
+            <p className="text-xs text-gray-500 mt-1">Parse failures</p>
+          </div>
+        </div>
+      )}
+
+      {/* Source breakdown table */}
+      {!isLoading && stats && Object.keys(stats.by_source).length > 0 && (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-100">
+              <th className="text-left text-xs font-medium text-gray-500 py-1">Source</th>
+              <th className="text-right text-xs font-medium text-gray-500 py-1">Emails</th>
+              <th className="text-right text-xs font-medium text-gray-500 py-1">Found</th>
+              <th className="text-right text-xs font-medium text-gray-500 py-1">Failed</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(stats.by_source).map(([source, counts]) => (
+              <tr key={source} className="border-b border-gray-50 last:border-0">
+                <td className="py-1.5 text-gray-700 capitalize">{source}</td>
+                <td className="py-1.5 text-right text-gray-600">{counts.emails}</td>
+                <td className="py-1.5 text-right text-indigo-600">{counts.success}</td>
+                <td className="py-1.5 text-right text-red-500">{counts.failed}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
 interface SettingsData {
   openai_api_key_set: boolean;
   openai_api_key_masked: string | null;
@@ -135,6 +270,9 @@ export default function Settings() {
           ))}
         </section>
       )}
+
+      {/* Statistics */}
+      <StatisticsSection />
 
       {/* Gmail */}
       <section className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
