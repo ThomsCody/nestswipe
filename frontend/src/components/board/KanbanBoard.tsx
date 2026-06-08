@@ -62,6 +62,7 @@ interface KanbanBoardProps {
 
 export default function KanbanBoard({ items, members, onStatusChange, onArchive, onOwnerChange }: KanbanBoardProps) {
   const [activeItem, setActiveItem] = useState<FavoriteItem | null>(null);
+  const [activeTab, setActiveTab] = useState<string | null>(null);
 
   const { data: statuses } = useQuery<StatusDTO[]>({
     queryKey: ["favorite-statuses"],
@@ -78,6 +79,8 @@ export default function KanbanBoard({ items, members, onStatusChange, onArchive,
       })),
     [statuses],
   );
+
+  const selectedTab = activeTab ?? columns[0]?.id ?? null;
 
   const pointerSensor = useSensor(PointerSensor, {
     activationConstraint: { distance: 8 },
@@ -133,6 +136,8 @@ export default function KanbanBoard({ items, members, onStatusChange, onArchive,
     onStatusChange(favoriteId, targetStatus);
   }
 
+  const selectedGroup = grouped.find((g) => g.config.id === selectedTab);
+
   return (
     <DndContext
       sensors={sensors}
@@ -140,11 +145,43 @@ export default function KanbanBoard({ items, members, onStatusChange, onArchive,
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex flex-col gap-3 md:flex-row md:overflow-x-auto md:pb-4 md:-mx-4 md:px-4">
+      {/* Mobile: tab selector + single column */}
+      <div className="md:hidden">
+        <div className="flex gap-1 mb-3 overflow-x-auto pb-1">
+          {grouped.map(({ config, items: colItems }) => (
+            <button
+              key={config.id}
+              onClick={() => setActiveTab(config.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                selectedTab === config.id
+                  ? `${config.bg} ${config.color} ring-1 ring-inset ring-current`
+                  : "bg-gray-100 text-gray-500"
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${config.ring}`} />
+              {config.label}
+              <span className="ml-0.5 opacity-60">{colItems.length}</span>
+            </button>
+          ))}
+        </div>
+        {selectedGroup && (
+          <KanbanColumn
+            key={selectedGroup.config.id}
+            config={selectedGroup.config}
+            items={selectedGroup.items}
+            members={members}
+            onOwnerChange={onOwnerChange}
+          />
+        )}
+      </div>
+
+      {/* Desktop: full horizontal Kanban */}
+      <div className="hidden md:flex gap-3 overflow-x-auto pb-4 -mx-4 px-4">
         {grouped.map(({ config, items }) => (
           <KanbanColumn key={config.id} config={config} items={items} members={members} onOwnerChange={onOwnerChange} />
         ))}
       </div>
+
       <ArchiveDropZone visible={activeItem !== null} />
       <DragOverlay dropAnimation={null}>
         {activeItem ? (
