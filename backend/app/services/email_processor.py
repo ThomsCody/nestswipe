@@ -380,6 +380,7 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                     url=url,
                     status="success",
                     fail_reason=None,
+                    result="updated" if existing else "new",
                 ))
                 processed += 1
                 # Commit after each listing so progress is saved

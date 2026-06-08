@@ -92,6 +92,8 @@ async def get_stats(
                 ParseAttempt.email_id.is_not(None)
             ).label("emails_parsed"),
             func.count().filter(ParseAttempt.status == "success").label("listings_success"),
+            func.count().filter(ParseAttempt.result == "new").label("listings_new"),
+            func.count().filter(ParseAttempt.result == "updated").label("listings_updated"),
             func.count().filter(
                 ParseAttempt.status == "failed",
                 ParseAttempt.url.is_not(None),
@@ -108,6 +110,8 @@ async def get_stats(
                 ParseAttempt.email_id.is_not(None)
             ).label("emails"),
             func.count().filter(ParseAttempt.status == "success").label("success"),
+            func.count().filter(ParseAttempt.result == "new").label("new"),
+            func.count().filter(ParseAttempt.result == "updated").label("updated"),
             func.count().filter(
                 ParseAttempt.status == "failed",
                 ParseAttempt.url.is_not(None),
@@ -119,7 +123,13 @@ async def get_stats(
     )
 
     by_source = {
-        row.source: {"emails": row.emails, "success": row.success, "failed": row.failed}
+        row.source: {
+            "emails": row.emails,
+            "success": row.success,
+            "new": row.new,
+            "updated": row.updated,
+            "failed": row.failed,
+        }
         for row in source_result
     }
 
@@ -131,6 +141,8 @@ async def get_stats(
         "period_end": period_end.isoformat(),
         "emails_parsed": totals.emails_parsed,
         "listings_success": totals.listings_success,
+        "listings_new": totals.listings_new,
+        "listings_updated": totals.listings_updated,
         "listings_failed": totals.listings_failed,
         "by_source": by_source,
     }

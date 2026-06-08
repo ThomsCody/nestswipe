@@ -8,6 +8,8 @@ type StatsPeriod = "day" | "week" | "month";
 interface SourceStats {
   emails: number;
   success: number;
+  new: number;
+  updated: number;
   failed: number;
 }
 
@@ -19,6 +21,8 @@ interface StatsData {
   period_end: string;
   emails_parsed: number;
   listings_success: number;
+  listings_new: number;
+  listings_updated: number;
   listings_failed: number;
   by_source: Record<string, SourceStats>;
 }
@@ -103,6 +107,11 @@ function StatisticsSection() {
           <div className="bg-gray-50 rounded-lg p-3 text-center">
             <p className="text-2xl font-semibold text-indigo-600">{stats?.listings_success ?? 0}</p>
             <p className="text-xs text-gray-500 mt-1">Listings found</p>
+            {(stats?.listings_success ?? 0) > 0 && (
+              <p className="text-[10px] text-gray-400 mt-1">
+                {stats?.listings_new ?? 0} new · {stats?.listings_updated ?? 0} updated
+              </p>
+            )}
           </div>
           <div className="bg-gray-50 rounded-lg p-3 text-center">
             <p className="text-2xl font-semibold text-red-500">{stats?.listings_failed ?? 0}</p>
@@ -118,7 +127,8 @@ function StatisticsSection() {
             <tr className="border-b border-gray-100">
               <th className="text-left text-xs font-medium text-gray-500 py-1">Source</th>
               <th className="text-right text-xs font-medium text-gray-500 py-1">Emails</th>
-              <th className="text-right text-xs font-medium text-gray-500 py-1">Found</th>
+              <th className="text-right text-xs font-medium text-gray-500 py-1">New</th>
+              <th className="text-right text-xs font-medium text-gray-500 py-1">Updated</th>
               <th className="text-right text-xs font-medium text-gray-500 py-1">Failed</th>
             </tr>
           </thead>
@@ -127,7 +137,8 @@ function StatisticsSection() {
               <tr key={source} className="border-b border-gray-50 last:border-0">
                 <td className="py-1.5 text-gray-700 capitalize">{source}</td>
                 <td className="py-1.5 text-right text-gray-600">{counts.emails}</td>
-                <td className="py-1.5 text-right text-indigo-600">{counts.success}</td>
+                <td className="py-1.5 text-right text-indigo-600">{counts.new}</td>
+                <td className="py-1.5 text-right text-gray-500">{counts.updated}</td>
                 <td className="py-1.5 text-right text-red-500">{counts.failed}</td>
               </tr>
             ))}
