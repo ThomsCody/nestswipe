@@ -140,7 +140,7 @@ export default function KanbanBoard({ items, members, onStatusChange, onArchive,
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex gap-3 overflow-x-auto pb-4 -mx-4 px-4">
+      <div className="flex flex-col gap-3 md:flex-row md:overflow-x-auto md:pb-4 md:-mx-4 md:px-4">
         {grouped.map(({ config, items }) => (
           <KanbanColumn key={config.id} config={config} items={items} members={members} onOwnerChange={onOwnerChange} />
         ))}
