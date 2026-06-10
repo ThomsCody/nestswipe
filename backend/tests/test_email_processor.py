@@ -54,8 +54,8 @@ def _apply_all_patches(stack: ExitStack) -> None:
             return_value=["https://mms.seloger.com/photo1.jpg"]
         ),
         f"{_M}.scrape_listing": AsyncMock(return_value=FAKE_SCRAPED),
-        f"{_M}.extract_listing_from_page": AsyncMock(return_value=FAKE_EXTRACTED),
-        f"{_M}.classify_photos": AsyncMock(side_effect=lambda _key, data: data),
+        f"{_M}.extract_listing_from_page": AsyncMock(return_value=(FAKE_EXTRACTED, 10, 5)),
+        f"{_M}.classify_photos": AsyncMock(side_effect=lambda _key, data: (data, 20, 3)),
         f"{_M}.download_photo": AsyncMock(return_value=FAKE_PNG_BYTES),
         f"{_M}.compute_phash": MagicMock(return_value="abcdef1234567890"),
         f"{_M}.get_minio_client": MagicMock(return_value=MagicMock()),
