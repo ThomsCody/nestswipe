@@ -73,7 +73,7 @@ async def import_listing_from_url(
         raise ImportError("Could not load the listing page. The site may be blocking requests.", status_code=502)
 
     # 4. LLM extraction
-    extracted = await extract_listing_from_page(api_key, scraped.page_text, source)
+    extracted, llm_inp, llm_out = await extract_listing_from_page(api_key, scraped.page_text, source)
     if not extracted or not extracted.title:
         raise ImportError("Could not extract listing data from the page.", status_code=502)
 
@@ -107,8 +107,9 @@ async def import_listing_from_url(
             if phash:
                 photo_phashes.append(phash)
 
+    photo_inp = photo_out = 0
     if photo_data:
-        photo_data = await classify_photos(api_key, photo_data)
+        photo_data, photo_inp, photo_out = await classify_photos(api_key, photo_data)
         photo_phashes = [phash for _, phash, _ in photo_data if phash]
 
     # 6. Check for duplicates

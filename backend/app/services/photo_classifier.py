@@ -30,8 +30,8 @@ def _image_to_data_url(image_bytes: bytes) -> str:
 async def _classify_batch(
     client: AsyncOpenAI,
     batch: list[tuple[bytes, str | None, str]],
-) -> list[bool]:
-    """Classify a batch of photos, return list of booleans."""
+) -> tuple[list[bool], int, int]:
+    """Classify a batch of photos. Returns (keep_flags, input_tokens, output_tokens)."""
     content: list[dict] = [
         {"type": "text", "text": f"Classify these {len(batch)} images:"}
     ]
@@ -51,42 +51,45 @@ async def _classify_batch(
         temperature=0,
     )
 
+    input_tokens = response.usage.prompt_tokens if response.usage else 0
+    output_tokens = response.usage.completion_tokens if response.usage else 0
     data = json.loads(response.choices[0].message.content)
     results = data.get("keep", [])
 
-    # Sanity check: if the model returned wrong length, keep all photos
     if len(results) != len(batch):
         logger.warning(
             "Classifier returned %d results for %d photos, keeping all",
             len(results), len(batch),
         )
-        return [True] * len(batch)
+        return [True] * len(batch), input_tokens, output_tokens
 
-    return results
+    return results, input_tokens, output_tokens
 
 
 async def classify_photos(
     api_key: str,
     photos: list[tuple[bytes, str | None, str]],
-) -> list[tuple[bytes, str | None, str]]:
+) -> tuple[list[tuple[bytes, str | None, str]], int, int]:
     """
     Filter out non-property photos using GPT-4o-mini vision.
 
-    Takes and returns the same (img_bytes, phash, url) tuple format
-    used by email_processor.py.
+    Returns (filtered_photos, input_tokens, output_tokens).
     """
     if not photos:
-        return photos
+        return photos, 0, 0
 
     client = AsyncOpenAI(api_key=api_key)
     keep_flags: list[bool] = []
+    total_input = 0
+    total_output = 0
 
-    # Process in batches
     for i in range(0, len(photos), BATCH_SIZE):
         batch = photos[i : i + BATCH_SIZE]
         try:
-            flags = await _classify_batch(client, batch)
+            flags, inp, out = await _classify_batch(client, batch)
             keep_flags.extend(flags)
+            total_input += inp
+            total_output += out
         except Exception:
             logger.exception("Photo classification failed for batch %d, keeping all", i)
             keep_flags.extend([True] * len(batch))
@@ -96,4 +99,4 @@ async def classify_photos(
     if removed:
         logger.info("Photo classifier: kept %d/%d photos (removed %d)", len(filtered), len(photos), removed)
 
-    return filtered
+    return filtered, total_input, total_output

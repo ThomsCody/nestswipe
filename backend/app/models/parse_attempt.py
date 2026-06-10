@@ -17,4 +17,6 @@ class ParseAttempt(Base):
     status = Column(String, nullable=False)     # "success" | "failed"
     fail_reason = Column(String, nullable=True) # no_urls | no_resolved_url | no_page_text | llm_no_listing | no_photos
     result = Column(String, nullable=True)      # "new" | "updated" (only set on success)
+    llm_input_tokens = Column(Integer, nullable=True)
+    llm_output_tokens = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)

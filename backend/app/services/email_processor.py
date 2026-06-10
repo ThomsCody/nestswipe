@@ -217,7 +217,7 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                 seen_resolved_urls.add(scraped.resolved_url)
 
                 # Step 3: LLM extraction on page text
-                extracted = await extract_listing_from_page(
+                extracted, llm_inp, llm_out = await extract_listing_from_page(
                     user.openai_api_key, scraped.page_text, source
                 )
                 if not extracted or not extracted.title:
@@ -232,6 +232,8 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                         url=url,
                         status="failed",
                         fail_reason="llm_no_listing",
+                        llm_input_tokens=llm_inp,
+                        llm_output_tokens=llm_out,
                     ))
                     continue
 
@@ -284,8 +286,9 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                             photo_phashes.append(phash)
 
                 # Filter out non-property photos (agency logos, agent portraits, etc.)
+                photo_inp = photo_out = 0
                 if photo_data:
-                    photo_data = await classify_photos(user.openai_api_key, photo_data)
+                    photo_data, photo_inp, photo_out = await classify_photos(user.openai_api_key, photo_data)
                     photo_phashes = [phash for _, phash, _ in photo_data if phash]
 
                 # Skip listings with no photos
@@ -301,6 +304,8 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                         url=url,
                         status="failed",
                         fail_reason="no_photos",
+                        llm_input_tokens=llm_inp + photo_inp,
+                        llm_output_tokens=llm_out + photo_out,
                     ))
                     continue
 
@@ -381,6 +386,8 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                     status="success",
                     fail_reason=None,
                     result="updated" if existing else "new",
+                    llm_input_tokens=llm_inp + photo_inp,
+                    llm_output_tokens=llm_out + photo_out,
                 ))
                 processed += 1
                 # Commit after each listing so progress is saved

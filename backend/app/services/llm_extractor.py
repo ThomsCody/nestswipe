@@ -154,8 +154,11 @@ async def extract_listings(api_key: str, email_html: str, source: str) -> list[E
 
 async def extract_listing_from_page(
     api_key: str, page_text: str, source: str
-) -> ExtractedListing | None:
-    """Extract a single listing from scraped page text using the LLM."""
+) -> tuple[ExtractedListing | None, int, int]:
+    """Extract a single listing from scraped page text using the LLM.
+
+    Returns (listing_or_none, input_tokens, output_tokens).
+    """
     try:
         client = AsyncOpenAI(api_key=api_key)
         response = await client.chat.completions.create(
@@ -170,14 +173,16 @@ async def extract_listing_from_page(
             ],
             temperature=0,
         )
+        input_tokens = response.usage.prompt_tokens if response.usage else 0
+        output_tokens = response.usage.completion_tokens if response.usage else 0
         content = response.choices[0].message.content
         if not content:
-            return None
+            return None, input_tokens, output_tokens
         data = json.loads(content)
         result = ExtractedListing(**data)
         if not result.is_listing:
-            return None
-        return result
+            return None, input_tokens, output_tokens
+        return result, input_tokens, output_tokens
     except Exception:
         logger.exception("LLM page extraction failed")
-        return None
+        return None, 0, 0

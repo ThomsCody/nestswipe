@@ -4,6 +4,10 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# GPT-4o-mini pricing (USD per token)
+GPT4O_MINI_INPUT_COST = 0.15 / 1_000_000
+GPT4O_MINI_OUTPUT_COST = 0.60 / 1_000_000
+
 from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.parse_attempt import ParseAttempt
@@ -98,9 +102,17 @@ async def get_stats(
                 ParseAttempt.status == "failed",
                 ParseAttempt.url.is_not(None),
             ).label("listings_failed"),
+            func.coalesce(func.sum(ParseAttempt.llm_input_tokens), 0).label("total_input_tokens"),
+            func.coalesce(func.sum(ParseAttempt.llm_output_tokens), 0).label("total_output_tokens"),
         ).where(*base_filter)
     )
     totals = totals_result.one()
+
+    total_cost = round(
+        totals.total_input_tokens * GPT4O_MINI_INPUT_COST
+        + totals.total_output_tokens * GPT4O_MINI_OUTPUT_COST,
+        6,
+    )
 
     # Per-source breakdown
     source_result = await db.execute(
@@ -116,6 +128,8 @@ async def get_stats(
                 ParseAttempt.status == "failed",
                 ParseAttempt.url.is_not(None),
             ).label("failed"),
+            func.coalesce(func.sum(ParseAttempt.llm_input_tokens), 0).label("input_tokens"),
+            func.coalesce(func.sum(ParseAttempt.llm_output_tokens), 0).label("output_tokens"),
         )
         .where(*base_filter)
         .group_by(ParseAttempt.source)
@@ -129,6 +143,11 @@ async def get_stats(
             "new": row.new,
             "updated": row.updated,
             "failed": row.failed,
+            "cost_usd": round(
+                row.input_tokens * GPT4O_MINI_INPUT_COST
+                + row.output_tokens * GPT4O_MINI_OUTPUT_COST,
+                6,
+            ),
         }
         for row in source_result
     }
@@ -144,5 +163,6 @@ async def get_stats(
         "listings_new": totals.listings_new,
         "listings_updated": totals.listings_updated,
         "listings_failed": totals.listings_failed,
+        "total_cost_usd": total_cost,
         "by_source": by_source,
     }

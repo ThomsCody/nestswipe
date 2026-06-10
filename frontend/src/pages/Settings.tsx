@@ -11,6 +11,7 @@ interface SourceStats {
   new: number;
   updated: number;
   failed: number;
+  cost_usd: number;
 }
 
 interface StatsData {
@@ -24,6 +25,7 @@ interface StatsData {
   listings_new: number;
   listings_updated: number;
   listings_failed: number;
+  total_cost_usd: number;
   by_source: Record<string, SourceStats>;
 }
 
@@ -93,13 +95,13 @@ function StatisticsSection() {
 
       {/* Summary cards */}
       {isLoading ? (
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          {[0, 1, 2].map((i) => (
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          {[0, 1, 2, 3].map((i) => (
             <div key={i} className="bg-gray-100 rounded-lg p-3 animate-pulse h-16" />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="grid grid-cols-2 gap-3 mb-4">
           <div className="bg-gray-50 rounded-lg p-3 text-center">
             <p className="text-2xl font-semibold text-gray-900">{stats?.emails_parsed ?? 0}</p>
             <p className="text-xs text-gray-500 mt-1">Emails parsed</p>
@@ -117,6 +119,12 @@ function StatisticsSection() {
             <p className="text-2xl font-semibold text-red-500">{stats?.listings_failed ?? 0}</p>
             <p className="text-xs text-gray-500 mt-1">Parse failures</p>
           </div>
+          <div className="bg-gray-50 rounded-lg p-3 text-center">
+            <p className="text-2xl font-semibold text-amber-600">
+              ${((stats?.total_cost_usd ?? 0)).toFixed(4)}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">LLM cost</p>
+          </div>
         </div>
       )}
 
@@ -130,6 +138,7 @@ function StatisticsSection() {
               <th className="text-right text-xs font-medium text-gray-500 py-1">New</th>
               <th className="text-right text-xs font-medium text-gray-500 py-1">Updated</th>
               <th className="text-right text-xs font-medium text-gray-500 py-1">Failed</th>
+              <th className="text-right text-xs font-medium text-gray-500 py-1">Cost</th>
             </tr>
           </thead>
           <tbody>
@@ -140,6 +149,7 @@ function StatisticsSection() {
                 <td className="py-1.5 text-right text-indigo-600">{counts.new}</td>
                 <td className="py-1.5 text-right text-gray-500">{counts.updated}</td>
                 <td className="py-1.5 text-right text-red-500">{counts.failed}</td>
+                <td className="py-1.5 text-right text-amber-600">${counts.cost_usd.toFixed(4)}</td>
               </tr>
             ))}
           </tbody>
