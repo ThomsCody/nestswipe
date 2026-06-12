@@ -1,6 +1,7 @@
-import { useEffect, useRef, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useCallback, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { AxiosError } from "axios";
 import client from "@/api/client";
 import { photoUrl } from "@/api/photos";
 import type { Listing } from "@/types";
@@ -18,6 +19,58 @@ interface ArchivesData {
 }
 
 const PER_PAGE = 8;
+
+function ArchiveLookup() {
+  const navigate = useNavigate();
+  const [url, setUrl] = useState("");
+  const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
+
+  const lookup = useMutation<{ listing_id: number }, AxiosError<{ detail: string }>, string>({
+    mutationFn: (u) => client.post("/archives/lookup", { url: u }).then((r) => r.data),
+    onSuccess: (data) => navigate(`/archives/${data.listing_id}`),
+    onError: (err) => {
+      const detail = err.response?.data?.detail;
+      setMessage({
+        text: detail === "not_in_archive"
+          ? "This listing exists in our database but is not in your archives."
+          : detail === "not_in_database"
+          ? "This listing was not found in our database."
+          : "Could not load the listing page. The site may be blocking requests.",
+        ok: false,
+      });
+    },
+  });
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 mb-4">
+      <input
+        type="url"
+        value={url}
+        onChange={(e) => { setUrl(e.target.value); setMessage(null); }}
+        placeholder="Paste a listing URL to search archives…"
+        disabled={lookup.isPending}
+        className="flex-1 min-w-0 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+      />
+      <button
+        onClick={() => url.trim() && lookup.mutate(url.trim())}
+        disabled={!url.trim() || lookup.isPending}
+        className="shrink-0 px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-50 transition-colors"
+      >
+        {lookup.isPending ? (
+          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+        ) : "Search"}
+      </button>
+      {message && (
+        <p className={`w-full text-sm ${message.ok ? "text-green-600" : "text-red-500"}`}>
+          {message.text}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export default function Archives() {
   const queryClient = useQueryClient();
@@ -73,6 +126,7 @@ export default function Archives() {
     return (
       <div>
         <h2 className="text-xl font-semibold text-gray-900 mb-4">Archives</h2>
+        <ArchiveLookup />
         <p className="text-gray-500">No passed listings yet.</p>
       </div>
     );
@@ -83,6 +137,7 @@ export default function Archives() {
       <h2 className="text-xl font-semibold text-gray-900 mb-4">
         Archives ({total})
       </h2>
+      <ArchiveLookup />
       <div className="grid gap-4 sm:grid-cols-2">
         {allItems.map((item) => (
           <Link

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -9,6 +10,7 @@ from app.models.interaction import Favorite, SwipeAction, SwipeDirection
 from app.models.listing import Listing
 from app.models.user import User
 from app.schemas.listing import ArchiveDetailResponse, ArchiveListItem, ArchivesListResponse, ListingResponse, PhotoResponse, PriceHistoryItem
+from app.services.lookup_listing import LookupError, lookup_listing_in_archive
 
 router = APIRouter()
 
@@ -89,6 +91,23 @@ async def get_archives(
         ],
         total=total,
     )
+
+
+class LookupRequest(BaseModel):
+    url: str
+
+
+@router.post("/lookup")
+async def lookup_archive_by_url(
+    body: LookupRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        listing_id = await lookup_listing_in_archive(body.url, user, db)
+        return {"listing_id": listing_id}
+    except LookupError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
 
 
 @router.get("/{listing_id}", response_model=ArchiveDetailResponse)
