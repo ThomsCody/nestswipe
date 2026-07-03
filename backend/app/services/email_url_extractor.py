@@ -61,16 +61,18 @@ def _format_link_table(links: list[tuple[int, str, str]]) -> str:
     return "\n".join(lines)
 
 
-async def extract_listing_urls(api_key: str, html: str, source: str) -> list[str]:
+async def extract_listing_urls(api_key: str, html: str, source: str) -> tuple[list[str], int, int]:
     """Extract listing URLs from email HTML.
 
     Parses all <a> tags, sends a compact link table to the LLM which returns
     indices of listing links, then maps indices back to full URLs.
+
+    Returns (urls, input_tokens, output_tokens).
     """
     links = _extract_link_table(html)
     if not links:
         logger.info("No <a> tags found in %s email", source)
-        return []
+        return [], 0, 0
 
     logger.info("Extracted %d <a> tags from %s email", len(links), source)
 
@@ -94,10 +96,13 @@ async def extract_listing_urls(api_key: str, html: str, source: str) -> list[str
             temperature=0,
             max_tokens=1024,
         )
+        input_tokens = response.usage.prompt_tokens if response.usage else 0
+        output_tokens = response.usage.completion_tokens if response.usage else 0
+
         content = response.choices[0].message.content
         if not content:
             logger.warning("LLM returned empty response for %s email", source)
-            return []
+            return [], input_tokens, output_tokens
 
         data = json.loads(content)
         indices = data.get("indices", [])
@@ -119,8 +124,8 @@ async def extract_listing_urls(api_key: str, html: str, source: str) -> list[str
             len(links),
             source,
         )
-        return urls
+        return urls, input_tokens, output_tokens
 
     except Exception:
         logger.exception("LLM URL extraction failed for %s email", source)
-        return []
+        return [], 0, 0

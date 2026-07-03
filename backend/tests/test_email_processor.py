@@ -25,6 +25,14 @@ FAKE_SCRAPED = ScrapedListing(
     page_text="Appartement 3 pieces 60m2",
 )
 
+FAKE_SCRAPED_PRE_APPROVED = ScrapedListing(
+    resolved_url="https://www.seloger.com/annonces/456.htm",
+    source_id="456",
+    photo_urls=["https://mms.seloger.com/photo1.jpg", "https://mms.seloger.com/photo2.jpg"],
+    photo_labels={"https://mms.seloger.com/photo1.jpg": "LIVING_ROOM"},
+    page_text="Appartement 3 pieces 60m2",
+)
+
 FAKE_EXTRACTED = ExtractedListing(
     is_listing=True,
     title="Bel Appartement",
@@ -48,7 +56,7 @@ def _apply_all_patches(stack: ExitStack) -> None:
         f"{_M}._gmail_list_messages": MagicMock(return_value=[{"id": "msg1"}]),
         f"{_M}._gmail_get_message": MagicMock(return_value=FAKE_GMAIL_MESSAGE),
         f"{_M}.extract_listing_urls": AsyncMock(
-            return_value=["https://www.seloger.com/annonces/123.htm"]
+            return_value=(["https://www.seloger.com/annonces/123.htm"], 8, 2)
         ),
         f"{_M}.extract_photos_from_html": MagicMock(
             return_value=["https://mms.seloger.com/photo1.jpg"]
@@ -90,6 +98,33 @@ class TestProcessEmailsForUser:
         )
         photos = photos_result.scalars().all()
         assert len(photos) >= 1
+
+    async def test_skips_vision_for_pre_approved_photos(self, db_session, test_user):
+        """Photos SeLoger's own classifier already labeled as a real room should
+        bypass classify_photos entirely; only the unlabeled one is sent."""
+        test_user.gmail_refresh_token = "test-refresh-token"
+        test_user.openai_api_key = "sk-test-key"
+        await db_session.commit()
+
+        classify_mock = AsyncMock(side_effect=lambda _key, data: (data, 20, 3))
+
+        with ExitStack() as stack:
+            _apply_all_patches(stack)
+            stack.enter_context(patch(f"{_M}.scrape_listing", AsyncMock(return_value=FAKE_SCRAPED_PRE_APPROVED)))
+            stack.enter_context(patch(f"{_M}.classify_photos", classify_mock))
+            count = await process_emails_for_user(test_user, db_session)
+
+        assert count == 1
+        classify_mock.assert_awaited_once()
+        sent_urls = [url for _, _, url in classify_mock.call_args.args[1]]
+        assert sent_urls == ["https://mms.seloger.com/photo2.jpg"]
+
+        result = await db_session.execute(select(Listing).where(Listing.user_id == test_user.id))
+        listing = result.scalars().first()
+        photos_result = await db_session.execute(
+            select(ListingPhoto).where(ListingPhoto.listing_id == listing.id)
+        )
+        assert len(photos_result.scalars().all()) == 2
 
     async def test_no_credentials_returns_zero(self, db_session, test_user):
         """User without gmail_refresh_token should be skipped immediately."""

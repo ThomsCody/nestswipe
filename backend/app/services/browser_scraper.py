@@ -35,6 +35,24 @@ EXCLUDE_PATTERNS = [
     "1x1", "transparent", "emails/images",
 ]
 
+# SeLoger's own site (the modern seloger.com template, not the older
+# bellesdemeures.com one) runs an AWS SageMaker scene classifier on every
+# photo and embeds the result in the page's hydration JSON. We reuse that
+# instead of our own GPT-4o-mini vision call where we can.
+#
+# Only labels we've actually observed in the wild are listed here — anything
+# else (including no label at all) falls back to vision classification, so
+# an unrecognized label can never cause a real photo to be silently dropped
+# or a bad one to be silently kept.
+_SELOGER_CLASSIFICATION_RE = re.compile(
+    r'classification\\?"\s*:\s*\{\\?"name\\?"\s*:\s*\\?"([A-Z_]+)\\?"'
+)
+SELOGER_PHOTO_ACCEPT_LABELS = {
+    "LIVING_ROOM", "KITCHEN", "BEDROOM", "BATHROOM",
+    "EXTERIOR_VIEW", "HALLWAY", "BUILDING_FACADE",
+}
+SELOGER_PHOTO_REJECT_LABELS = {"LOGO"}
+
 # Warm-up URLs per source (visit homepage first to establish trust)
 WARMUP_URLS = {
     "seloger": "https://www.seloger.com/",
@@ -94,6 +112,10 @@ class ScrapedListing:
     resolved_url: str | None = None
     source_id: str | None = None
     photo_urls: list[str] = field(default_factory=list)
+    # Maps a photo_urls entry to a pre-approved room label when SeLoger's own
+    # scene classifier already confirmed it (see SELOGER_PHOTO_ACCEPT_LABELS).
+    # Absence from this dict means "no confident signal, needs vision".
+    photo_labels: dict[str, str] = field(default_factory=dict)
     page_text: str | None = None
 
 
@@ -169,8 +191,8 @@ def _normalize_photo_url(url: str) -> str:
     return url
 
 
-def _extract_photos_from_html(html: str, source: str) -> list[str]:
-    """Extract property photo URLs from rendered listing page HTML."""
+def _extract_photos_from_html(html: str, source: str) -> tuple[list[str], dict[str, str]]:
+    """Extract property photo URLs (and any pre-approved room labels) from rendered listing page HTML."""
     soup = BeautifulSoup(html, "html.parser")
 
     # Remove recommendation / cross-sell / similar listings sections
@@ -186,45 +208,15 @@ def _extract_photos_from_html(html: str, source: str) -> list[str]:
     seen_base: set[str] = set()
     photos: list[str] = []
 
-    # Collect candidate URLs from various HTML attributes
-    candidate_urls: list[str] = []
-
-    # img src / data-src attributes
-    for img in soup.find_all("img"):
-        for attr in ("src", "data-src", "data-lazy", "data-original"):
-            val = img.get(attr, "")
-            if val:
-                candidate_urls.append(val)
-        # srcset
-        srcset = img.get("srcset", "")
-        for part in srcset.split(","):
-            url = part.strip().split(" ")[0]
-            if url:
-                candidate_urls.append(url)
-
-    # picture > source srcset
-    for source_tag in soup.find_all("source"):
-        srcset = source_tag.get("srcset", "")
-        for part in srcset.split(","):
-            url = part.strip().split(" ")[0]
-            if url:
-                candidate_urls.append(url)
-
-    # Background images in style attributes
-    for tag in soup.find_all(style=True):
-        style = tag.get("style", "")
-        urls = re.findall(r'url\(["\']?(https?://[^"\')\s]+)', style)
-        candidate_urls.extend(urls)
-
-    # og:image meta tags (main photo)
-    for meta in soup.find_all("meta", property="og:image"):
-        content = meta.get("content", "")
-        if content:
-            candidate_urls.insert(0, content)
-
-    # Inline JSON/JS data — SeLoger embeds a full photo gallery in a script
-    # tag with double-escaped JSON (\" becomes \\").  Extract image URLs
-    # regardless of escaping style.
+    # Inline JSON/JS data — the modern seloger.com template embeds its full
+    # photo gallery in a script tag with double-escaped JSON (\" becomes
+    # \\"), alongside SeLoger's own scene classification label for each
+    # photo.  When present, this JSON is the *only* source of real gallery
+    # photos on that template — every plain <img>/<source>/og:image tag on
+    # the page is a UI icon or map thumbnail, not a property photo, so we
+    # skip the generic scan entirely to avoid sending junk to vision.
+    mms_seloger_urls: list[str] = []
+    raw_labels: dict[str, str] = {}
     for script in soup.find_all("script"):
         text = script.string or ""
         if "mms.seloger" not in text:
@@ -233,12 +225,65 @@ def _extract_photos_from_html(html: str, source: str) -> list[str]:
             r"https?://mms\.seloger\.com/[^\"\s\\]+\.(?:jpe?g|png|webp)[^\"\s\\]*",
             text,
         ):
-            candidate_urls.append(m.group(0))
+            url = m.group(0)
+            mms_seloger_urls.append(url)
+            window = text[m.end():m.end() + 300]
+            label_match = _SELOGER_CLASSIFICATION_RE.search(window)
+            if label_match:
+                raw_labels[url] = label_match.group(1)
+
+    if mms_seloger_urls:
+        candidate_urls = mms_seloger_urls
+    else:
+        # Older templates (e.g. bellesdemeures.com) render their gallery as
+        # plain HTML, so fall back to scanning generic image attributes.
+        candidate_urls = []
+
+        # img src / data-src attributes
+        for img in soup.find_all("img"):
+            for attr in ("src", "data-src", "data-lazy", "data-original"):
+                val = img.get(attr, "")
+                if val:
+                    candidate_urls.append(val)
+            # srcset
+            srcset = img.get("srcset", "")
+            for part in srcset.split(","):
+                url = part.strip().split(" ")[0]
+                if url:
+                    candidate_urls.append(url)
+
+        # picture > source srcset
+        for source_tag in soup.find_all("source"):
+            srcset = source_tag.get("srcset", "")
+            for part in srcset.split(","):
+                url = part.strip().split(" ")[0]
+                if url:
+                    candidate_urls.append(url)
+
+        # Background images in style attributes
+        for tag in soup.find_all(style=True):
+            style = tag.get("style", "")
+            urls = re.findall(r'url\(["\']?(https?://[^"\')\s]+)', style)
+            candidate_urls.extend(urls)
+
+        # og:image meta tags (main photo)
+        for meta in soup.find_all("meta", property="og:image"):
+            content = meta.get("content", "")
+            if content:
+                candidate_urls.insert(0, content)
+
+    # Drop images SeLoger's own classifier already confirmed are not property
+    # photos (e.g. agency logos) before they ever reach dedup/download.
+    candidate_urls = [
+        url for url in candidate_urls
+        if raw_labels.get(url) not in SELOGER_PHOTO_REJECT_LABELS
+    ]
 
     # Filter, deduplicate, normalize
     # Use the filename (last path segment) as dedup key so different sizes
     # of the same image (e.g. v.seloger.com/s/crop/48x48/.../HASH.jpg vs
     # /s/crop/933x645/.../HASH.jpg) are treated as one image.
+    photo_labels: dict[str, str] = {}
     for url in candidate_urls:
         if not _is_valid_photo(url, source):
             continue
@@ -249,8 +294,13 @@ def _extract_photos_from_html(html: str, source: str) -> list[str]:
             continue
         seen_base.add(filename)
         photos.append(normalized)
+        label = raw_labels.get(url)
+        if label in SELOGER_PHOTO_ACCEPT_LABELS:
+            photo_labels[normalized] = label
 
-    return photos[:MAX_PHOTOS_PER_LISTING]
+    photos = photos[:MAX_PHOTOS_PER_LISTING]
+    photo_labels = {url: label for url, label in photo_labels.items() if url in photos}
+    return photos, photo_labels
 
 
 def _extract_page_text(html: str) -> str | None:
@@ -315,7 +365,7 @@ async def scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
             result.source_id = _extract_source_id(final_url, source)
 
             if resp.status_code == 200:
-                result.photo_urls = _extract_photos_from_html(resp.text, source)
+                result.photo_urls, result.photo_labels = _extract_photos_from_html(resp.text, source)
                 result.page_text = _extract_page_text(resp.text)
                 logger.info(
                     "Scraped listing: url=%s source_id=%s photos=%d page_text=%d chars",

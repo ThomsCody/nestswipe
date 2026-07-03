@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -142,6 +143,33 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
             if source == "unknown":
                 continue
 
+            # Gmail's index-lag overlap window (GMAIL_INDEX_LAG) can re-surface
+            # the same email in consecutive poll cycles. Skip it here — before
+            # any LLM/scrape calls — rather than relying on downstream listing
+            # dedup, which only runs *after* the costly steps.
+            already_attempted = await db.execute(
+                select(ParseAttempt.id)
+                .where(
+                    ParseAttempt.household_id == user.household_id,
+                    ParseAttempt.email_id == msg_meta["id"],
+                )
+                .limit(1)
+            )
+            if already_attempted.scalar_one_or_none() is not None:
+                logger.info("Skipping already-processed email %s", msg_meta["id"])
+                db.add(ParseAttempt(
+                    household_id=user.household_id,
+                    user_id=user.id,
+                    source=source,
+                    email_id=msg_meta["id"],
+                    url=None,
+                    status="skipped_duplicate_email",
+                    call_type="skipped_duplicate_email",
+                ))
+                await db.flush()
+                await db.commit()
+                continue
+
             html_body = _extract_html_body(payload)
             if not html_body:
                 continue
@@ -149,7 +177,7 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
             logger.info("Processing email from %s (msg %s, %d chars)", source, msg_meta["id"], len(html_body))
 
             # Step 1: Extract candidate listing URLs from email HTML via LLM
-            candidate_urls = await extract_listing_urls(user.openai_api_key, html_body, source)
+            candidate_urls, url_inp, url_out = await extract_listing_urls(user.openai_api_key, html_body, source)
             if not candidate_urls:
                 logger.warning("extraction_failed: no candidate URLs found",
                                extra={"event": "extraction_failed", "reason": "no_urls",
@@ -162,11 +190,28 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                     url=None,
                     status="failed",
                     fail_reason="no_urls",
+                    llm_input_tokens=url_inp,
+                    llm_output_tokens=url_out,
+                    call_type="url_extraction",
                 ))
                 await db.flush()
                 await db.commit()
                 continue
             logger.info("Email %s: found %d candidate URL(s)", msg_meta["id"], len(candidate_urls))
+
+            # Record the URL-extraction step's cost separately — it isn't tied
+            # to any single listing outcome below.
+            db.add(ParseAttempt(
+                household_id=user.household_id,
+                user_id=user.id,
+                source=source,
+                email_id=msg_meta["id"],
+                url=None,
+                status="tracking",
+                call_type="url_extraction",
+                llm_input_tokens=url_inp,
+                llm_output_tokens=url_out,
+            ))
 
             # Pre-extract email photos as fallback (cheap, no LLM)
             email_photos = extract_photos_from_html(html_body, source)
@@ -234,6 +279,9 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                         fail_reason="llm_no_listing",
                         llm_input_tokens=llm_inp,
                         llm_output_tokens=llm_out,
+                        page_extraction_input_tokens=llm_inp,
+                        page_extraction_output_tokens=llm_out,
+                        page_text_chars=len(scraped.page_text),
                     ))
                     continue
 
@@ -267,12 +315,15 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                 page_photos = scraped.photo_urls or []
                 if page_photos:
                     photo_urls = page_photos
+                    photo_labels = scraped.photo_labels
                     logger.info("Using %d photos from listing page", len(photo_urls))
                 elif email_photos:
                     photo_urls = email_photos
+                    photo_labels = {}
                     logger.info("Falling back to %d photos from email HTML", len(photo_urls))
                 else:
                     photo_urls = []
+                    photo_labels = {}
 
                 # Download photos and compute phashes
                 photo_data: list[tuple[bytes, str | None, str]] = []
@@ -285,11 +336,20 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                         if phash:
                             photo_phashes.append(phash)
 
-                # Filter out non-property photos (agency logos, agent portraits, etc.)
+                # Photos SeLoger's own scene classifier already confirmed are a
+                # real room skip our vision call entirely; everything else
+                # (unlabeled, or from a source with no such signal) still goes
+                # through GPT-4o-mini classification as before.
+                sent_photo_count = len(photo_data)
+                pre_approved = [pd for pd in photo_data if pd[2] in photo_labels]
+                needs_vision = [pd for pd in photo_data if pd[2] not in photo_labels]
+
                 photo_inp = photo_out = 0
-                if photo_data:
-                    photo_data, photo_inp, photo_out = await classify_photos(user.openai_api_key, photo_data)
-                    photo_phashes = [phash for _, phash, _ in photo_data if phash]
+                classified: list[tuple[bytes, str | None, str]] = []
+                if needs_vision:
+                    classified, photo_inp, photo_out = await classify_photos(user.openai_api_key, needs_vision)
+                photo_data = pre_approved + classified
+                photo_phashes = [phash for _, phash, _ in photo_data if phash]
 
                 # Skip listings with no photos
                 if not photo_data:
@@ -306,6 +366,12 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                         fail_reason="no_photos",
                         llm_input_tokens=llm_inp + photo_inp,
                         llm_output_tokens=llm_out + photo_out,
+                        page_extraction_input_tokens=llm_inp,
+                        page_extraction_output_tokens=llm_out,
+                        photo_classification_input_tokens=photo_inp,
+                        photo_classification_output_tokens=photo_out,
+                        page_text_chars=len(scraped.page_text),
+                        photo_count=sent_photo_count,
                     ))
                     continue
 
@@ -388,6 +454,12 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                     result="updated" if existing else "new",
                     llm_input_tokens=llm_inp + photo_inp,
                     llm_output_tokens=llm_out + photo_out,
+                    page_extraction_input_tokens=llm_inp,
+                    page_extraction_output_tokens=llm_out,
+                    photo_classification_input_tokens=photo_inp,
+                    photo_classification_output_tokens=photo_out,
+                    page_text_chars=len(scraped.page_text),
+                    photo_count=sent_photo_count,
                 ))
                 processed += 1
                 # Commit after each listing so progress is saved
