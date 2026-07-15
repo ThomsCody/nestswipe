@@ -2,6 +2,8 @@ import base64
 import json
 import logging
 
+from ddtrace.llmobs import LLMObs
+from ddtrace.llmobs.decorators import task
 from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
@@ -53,6 +55,10 @@ async def _classify_batch(
 
     input_tokens = response.usage.prompt_tokens if response.usage else 0
     output_tokens = response.usage.completion_tokens if response.usage else 0
+    LLMObs.annotate(
+        metadata={"model": "gpt-4o-mini", "batch_size": len(batch)},
+        metrics={"input_tokens": input_tokens, "output_tokens": output_tokens},
+    )
     data = json.loads(response.choices[0].message.content)
     results = data.get("keep", [])
 
@@ -66,6 +72,7 @@ async def _classify_batch(
     return results, input_tokens, output_tokens
 
 
+@task(name="classify_photos")
 async def classify_photos(
     api_key: str,
     photos: list[tuple[bytes, str | None, str]],

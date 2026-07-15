@@ -1,10 +1,16 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from ddtrace import config, patch_all
 
 config.fastapi["service_name"] = "nestswipe-backend"
 patch_all()
+
+if os.getenv("DD_LLMOBS_ENABLED", "").lower() == "true":
+    from ddtrace.llmobs import LLMObs
+
+    LLMObs.enable(ml_app=os.getenv("DD_LLMOBS_ML_APP", "nestswipe"), integrations_enabled=True)
 
 from fastapi import FastAPI
 

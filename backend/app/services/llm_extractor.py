@@ -1,6 +1,8 @@
 import json
 import logging
 
+from ddtrace.llmobs import LLMObs
+from ddtrace.llmobs.decorators import task
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -100,6 +102,7 @@ class ExtractedListing(BaseModel):
     agent_name: str | None = None
 
 
+@task(name="extract_listing")
 async def extract_listing(api_key: str, email_html: str, source: str) -> ExtractedListing | None:
     try:
         client = AsyncOpenAI(api_key=api_key)
@@ -122,6 +125,7 @@ async def extract_listing(api_key: str, email_html: str, source: str) -> Extract
         return None
 
 
+@task(name="extract_listings")
 async def extract_listings(api_key: str, email_html: str, source: str) -> list[ExtractedListing]:
     """Extract all listings from an email that may contain multiple properties."""
     try:
@@ -152,6 +156,7 @@ async def extract_listings(api_key: str, email_html: str, source: str) -> list[E
         return []
 
 
+@task(name="extract_listing_from_page")
 async def extract_listing_from_page(
     api_key: str, page_text: str, source: str
 ) -> tuple[ExtractedListing | None, int, int]:
@@ -175,6 +180,10 @@ async def extract_listing_from_page(
         )
         input_tokens = response.usage.prompt_tokens if response.usage else 0
         output_tokens = response.usage.completion_tokens if response.usage else 0
+        LLMObs.annotate(
+            metadata={"model": "gpt-4o-mini", "source": source},
+            metrics={"input_tokens": input_tokens, "output_tokens": output_tokens},
+        )
         content = response.choices[0].message.content
         if not content:
             return None, input_tokens, output_tokens

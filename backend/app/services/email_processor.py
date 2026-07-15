@@ -3,6 +3,7 @@ import base64
 import logging
 from datetime import datetime, timedelta, timezone
 
+from ddtrace.llmobs.decorators import workflow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -111,6 +112,7 @@ def _gmail_get_message(service, msg_id: str) -> dict:
     return service.users().messages().get(userId="me", id=msg_id, format="full").execute()
 
 
+@workflow(name="process_emails_for_user")
 async def process_emails_for_user(user: User, db: AsyncSession) -> int:
     if not user.gmail_refresh_token or not user.openai_api_key:
         return 0

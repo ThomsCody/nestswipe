@@ -87,6 +87,9 @@ services:
       DD_IAST_ENABLED: "true"
       DD_PROFILING_ENABLED: "true"
       DD_DYNAMIC_INSTRUMENTATION_ENABLED: "true"
+      # Datadog LLM Observability
+      DD_LLMOBS_ENABLED: "true"
+      DD_LLMOBS_ML_APP: ${DD_LLMOBS_ML_APP:-nestswipe}
     volumes:
       - ./oauth.json:/app/oauth.json:ro
     depends_on:
