@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
@@ -15,6 +16,18 @@ PROXY_SOURCES = {"seloger", "leboncoin"}
 
 REQUEST_TIMEOUT = 30
 MAX_PHOTOS_PER_LISTING = 30
+
+# Minimum delay between consecutive scrape requests to a bot-protected source.
+# A backlog of queued emails processed back-to-back can otherwise fire dozens
+# of requests within seconds and trip anti-bot rate limiting (e.g. SeLoger's
+# DataDome returning 403 on click.by.seloger.com redirect resolution).
+MIN_REQUEST_INTERVAL_SECONDS = {"seloger": 5.0, "leboncoin": 5.0}
+_last_request_at: dict[str, float] = {}
+
+# Response codes that indicate bot-detection/rate-limiting rather than a
+# real "page doesn't exist" — worth a short retry instead of giving up.
+THROTTLE_STATUS_CODES = {403, 429}
+RETRY_DELAYS_SECONDS = [5.0, 15.0]
 
 # Tracking / UTM params to strip from final URLs
 STRIP_PARAMS = {
@@ -303,6 +316,20 @@ def _extract_photos_from_html(html: str, source: str) -> tuple[list[str], dict[s
     return photos, photo_labels
 
 
+async def _throttle(source: str) -> None:
+    """Enforce a minimum gap since the last request to this source."""
+    min_interval = MIN_REQUEST_INTERVAL_SECONDS.get(source)
+    if not min_interval:
+        return
+    loop = asyncio.get_event_loop()
+    last = _last_request_at.get(source)
+    if last is not None:
+        wait = min_interval - (loop.time() - last)
+        if wait > 0:
+            await asyncio.sleep(wait)
+    _last_request_at[source] = loop.time()
+
+
 def _extract_page_text(html: str) -> str | None:
     """Extract readable text from listing page HTML, stripping nav/scripts."""
     soup = BeautifulSoup(html, "html.parser")
@@ -349,12 +376,25 @@ async def scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
             listing_headers = HEADERS.copy()
             if referer := LISTING_REFERERS.get(source):
                 listing_headers["Referer"] = referer
-            resp = await session.get(
-                tracking_url,
-                headers=listing_headers,
-                timeout=REQUEST_TIMEOUT,
-                allow_redirects=True,
-            )
+
+            for attempt in range(len(RETRY_DELAYS_SECONDS) + 1):
+                await _throttle(source)
+                resp = await session.get(
+                    tracking_url,
+                    headers=listing_headers,
+                    timeout=REQUEST_TIMEOUT,
+                    allow_redirects=True,
+                )
+                if resp.status_code not in THROTTLE_STATUS_CODES:
+                    break
+                if attempt == len(RETRY_DELAYS_SECONDS):
+                    break
+                delay = RETRY_DELAYS_SECONDS[attempt]
+                logger.warning(
+                    "Possible rate-limiting (status %d) for %s, retrying in %.0fs (attempt %d/%d)",
+                    resp.status_code, tracking_url, delay, attempt + 1, len(RETRY_DELAYS_SECONDS),
+                )
+                await asyncio.sleep(delay)
 
             # Capture the final URL after all redirects
             final_url = str(resp.url)
