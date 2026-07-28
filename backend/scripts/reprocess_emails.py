@@ -15,7 +15,6 @@ Run from the backend container:
 import argparse
 import asyncio
 import logging
-import sys
 from datetime import datetime
 
 from sqlalchemy import select
@@ -49,9 +48,16 @@ async def _find_failed_email_ids(source: str | None, since: datetime | None, unt
         return [row[0] for row in result.all()]
 
 
-async def main(email_ids: list[str]) -> None:
+async def main(args: argparse.Namespace) -> None:
+    if args.email_ids:
+        email_ids = args.email_ids
+    else:
+        since = datetime.fromisoformat(args.since) if args.since else None
+        until = datetime.fromisoformat(args.until) if args.until else None
+        email_ids = await _find_failed_email_ids(args.source, since, until)
+
     if not email_ids:
-        logger.info("No email IDs to reprocess")
+        logger.info("Nothing to reprocess")
         return
 
     logger.info("Reprocessing %d email(s): %s", len(email_ids), email_ids)
@@ -80,15 +86,4 @@ if __name__ == "__main__":
     parser.add_argument("--until", help="Only reprocess attempts before this time, e.g. '2026-07-28 00:00'")
     args = parser.parse_args()
 
-    if args.email_ids:
-        ids = args.email_ids
-    else:
-        since = datetime.fromisoformat(args.since) if args.since else None
-        until = datetime.fromisoformat(args.until) if args.until else None
-        ids = asyncio.run(_find_failed_email_ids(args.source, since, until))
-
-    if not ids:
-        logger.info("Nothing to reprocess")
-        sys.exit(0)
-
-    asyncio.run(main(ids))
+    asyncio.run(main(args))
