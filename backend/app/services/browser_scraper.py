@@ -417,6 +417,20 @@ async def scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
                     "Page load failed (status %d) for %s",
                     resp.status_code, tracking_url,
                 )
+                # TEMPORARY diagnostics: figure out whether SeLoger's block is a
+                # JS-challenge interstitial (DataDome headers/cookie present) vs
+                # a hard IP-level block (plain WAF page, no DataDome markers).
+                datadome_headers = {
+                    k: v for k, v in resp.headers.items() if "datadome" in k.lower()
+                }
+                logger.warning(
+                    "Diag for %s: final_url=%s datadome_headers=%s set_cookie=%s body_snippet=%r",
+                    tracking_url,
+                    final_url,
+                    datadome_headers,
+                    resp.headers.get("set-cookie", ""),
+                    resp.text[:500] if resp.text else "",
+                )
 
     except Exception:
         logger.exception("Failed to scrape listing from %s", tracking_url)
