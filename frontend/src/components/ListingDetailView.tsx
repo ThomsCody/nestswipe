@@ -5,46 +5,6 @@ import Gallery from "@/components/Gallery";
 import PriceTrend from "@/components/PriceTrend";
 
 /* ------------------------------------------------------------------ */
-/*  PriceChart                                                        */
-/* ------------------------------------------------------------------ */
-
-function PriceChart({ history }: { history: PriceHistoryEntry[] }) {
-  if (history.length <= 1) return null;
-
-  const prices = history.map((h) => h.price);
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
-  const range = max - min || 1;
-
-  return (
-    <div className="mt-4">
-      <h3 className="text-sm font-medium text-gray-700 mb-2">Price History</h3>
-      <div className="bg-gray-50 rounded-lg p-3">
-        <div className="flex items-end gap-1 h-24">
-          {history.map((h, i) => {
-            const height = ((h.price - min) / range) * 80 + 20;
-            return (
-              <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                <span className="text-[10px] text-gray-400">
-                  {Math.round(h.price / 1000)}k
-                </span>
-                <div
-                  className="w-full bg-indigo-400 rounded-t"
-                  style={{ height: `${height}%` }}
-                />
-                <span className="text-[10px] text-gray-400">
-                  {new Date(h.observed_at).toLocaleDateString("fr-FR", { month: "short", day: "numeric" })}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /*  Contact form (only shown for favorites)                           */
 /* ------------------------------------------------------------------ */
 
@@ -54,81 +14,117 @@ interface ContactFormProps {
   sellerName: string;
   sellerPhone: string;
   sellerIsAgency: boolean;
-  isDirty: boolean;
-  isSaving: boolean;
   listing?: Listing;
   onVisitDateChange: (v: string) => void;
   onLocationChange: (v: string) => void;
   onSellerNameChange: (v: string) => void;
   onSellerPhoneChange: (v: string) => void;
   onSellerIsAgencyChange: (v: boolean) => void;
-  onSave: () => void;
 }
 
 function ContactForm(props: ContactFormProps) {
+  const [isEditingOnMobile, setIsEditingOnMobile] = useState(false);
+
+  const visitSummary = props.visitDate
+    ? new Date(props.visitDate).toLocaleString("fr-FR", {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "No visit scheduled";
+
+  const contactSummary = [props.sellerName, props.sellerPhone].filter(Boolean).join(" · ");
+
   return (
-    <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-      <h3 className="text-sm font-medium text-gray-700 mb-3">Visit &amp; Contact</h3>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="sm:col-span-2">
-          <label className="block text-xs text-gray-500 mb-1">Visit date</label>
-          <input
-            type="datetime-local"
-            value={props.visitDate}
-            onChange={(e) => props.onVisitDateChange(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
-          />
+    <div className="mt-6 border-t border-gray-200 pt-5">
+      <div className="flex items-center justify-between gap-4">
+        <h3 className="text-base font-semibold text-gray-900">Visit &amp; contact</h3>
+        <button
+          type="button"
+          onClick={() => setIsEditingOnMobile((open) => !open)}
+          className="min-h-11 rounded-md px-2 text-sm font-medium text-indigo-600 hover:text-indigo-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 lg:hidden"
+          aria-expanded={isEditingOnMobile}
+        >
+          {isEditingOnMobile ? "Close" : "Edit"}
+        </button>
+      </div>
+
+      {!isEditingOnMobile && (
+        <dl className="mt-4 space-y-4 text-sm lg:hidden">
+          <div>
+            <dt className="text-xs font-medium text-gray-500">Visit</dt>
+            <dd className="mt-1 font-medium text-gray-900">{visitSummary}</dd>
+            {props.location && <dd className="mt-0.5 text-gray-600">{props.location}</dd>}
+          </div>
+          <div>
+            <dt className="text-xs font-medium text-gray-500">Contact</dt>
+            <dd className="mt-1 text-gray-700">{contactSummary || "No contact details"}</dd>
+            {props.sellerIsAgency && <dd className="mt-0.5 text-gray-500">Agency</dd>}
+          </div>
+        </dl>
+      )}
+
+      <div className={`${isEditingOnMobile ? "block" : "hidden"} mt-5 space-y-5 lg:block`}>
+        <div className="space-y-4">
+          <h4 className="text-sm font-medium text-gray-700">Visit</h4>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">Visit date</label>
+            <input
+              type="datetime-local"
+              value={props.visitDate}
+              onChange={(e) => props.onVisitDateChange(e.target.value)}
+              className="min-h-11 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">Location / address</label>
+            <input
+              type="text"
+              value={props.location}
+              onChange={(e) => props.onLocationChange(e.target.value)}
+              placeholder="Full address for the visit"
+              className="min-h-11 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+          </div>
         </div>
-        <div className="sm:col-span-2">
-          <label className="block text-xs text-gray-500 mb-1">Location / address</label>
-          <input
-            type="text"
-            value={props.location}
-            onChange={(e) => props.onLocationChange(e.target.value)}
-            placeholder="Full address for the visit"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">Seller name</label>
-          <input
-            type="text"
-            value={props.sellerName}
-            onChange={(e) => props.onSellerNameChange(e.target.value)}
-            placeholder={props.listing?.agent_name ?? props.listing?.agency_name ?? "Name"}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">Seller phone</label>
-          <input
-            type="tel"
-            value={props.sellerPhone}
-            onChange={(e) => props.onSellerPhoneChange(e.target.value)}
-            placeholder={props.listing?.contact_phone ?? "Phone number"}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
-          />
-        </div>
-        <div className="sm:col-span-2 flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="seller-agency"
-            checked={props.sellerIsAgency}
-            onChange={(e) => props.onSellerIsAgencyChange(e.target.checked)}
-            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-          />
-          <label htmlFor="seller-agency" className="text-sm text-gray-600">
-            This is an agency
-          </label>
+
+        <div className="space-y-4 border-t border-gray-200 pt-5">
+          <h4 className="text-sm font-medium text-gray-700">Contact</h4>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">Seller name</label>
+            <input
+              type="text"
+              value={props.sellerName}
+              onChange={(e) => props.onSellerNameChange(e.target.value)}
+              placeholder={props.listing?.agent_name ?? props.listing?.agency_name ?? "Name"}
+              className="min-h-11 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">Seller phone</label>
+            <input
+              type="tel"
+              value={props.sellerPhone}
+              onChange={(e) => props.onSellerPhoneChange(e.target.value)}
+              placeholder={props.listing?.contact_phone ?? "Phone number"}
+              className="min-h-11 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+          </div>
+          <div className="flex min-h-11 items-center gap-3">
+            <input
+              type="checkbox"
+              id="seller-agency"
+              checked={props.sellerIsAgency}
+              onChange={(e) => props.onSellerIsAgencyChange(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            <label htmlFor="seller-agency" className="text-sm text-gray-600">
+              This is an agency
+            </label>
+          </div>
         </div>
       </div>
-      <button
-        disabled={!props.isDirty || props.isSaving}
-        onClick={props.onSave}
-        className="mt-3 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-      >
-        {props.isSaving ? "Saving..." : "Save"}
-      </button>
     </div>
   );
 }
@@ -247,10 +243,10 @@ function CommentsSection({ comments, onAdd, onDelete, isAdding, householdMembers
   };
 
   return (
-    <div className="mt-6">
-      <h3 className="text-sm font-medium text-gray-700 mb-3">
+    <section>
+      <h2 className="mb-4 text-lg font-semibold text-gray-900">
         Comments ({comments.length})
-      </h3>
+      </h2>
       <div className="space-y-3">
         {comments.map((c) => (
           <div key={c.id} className="bg-gray-50 rounded-lg p-3">
@@ -274,7 +270,7 @@ function CommentsSection({ comments, onAdd, onDelete, isAdding, householdMembers
           </div>
         ))}
       </div>
-      <div className="relative flex gap-2 mt-3">
+      <div className="relative mt-3 flex flex-col gap-2 sm:flex-row">
         <div className="relative flex-1">
           <input
             ref={inputRef}
@@ -308,12 +304,12 @@ function CommentsSection({ comments, onAdd, onDelete, isAdding, householdMembers
         <button
           onClick={submit}
           disabled={!comment.trim() || isAdding}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+          className="min-h-11 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
         >
           Send
         </button>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -326,7 +322,7 @@ export interface ListingDetailViewProps {
   priceHistory: PriceHistoryEntry[];
   backLabel: string;
   backTo: string;
-  contactForm?: ReactNode;
+  managementPanel?: ReactNode;
   commentsSection?: ReactNode;
   bottomAction: ReactNode;
 }
@@ -338,72 +334,105 @@ export default function ListingDetailView({
   priceHistory,
   backLabel,
   backTo,
-  contactForm,
+  managementPanel,
   commentsSection,
   bottomAction,
 }: ListingDetailViewProps) {
   const navigate = useNavigate();
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="mx-auto max-w-6xl">
       <button
         onClick={() => navigate(backTo)}
-        className="text-sm text-gray-500 hover:text-gray-700 mb-4"
+        className="mb-5 min-h-11 text-sm font-medium text-gray-500 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
       >
         &larr; {backLabel}
       </button>
 
-      <Gallery photos={listing.photos} />
-
-      <div className="mt-4">
-        <h2 className="text-xl font-semibold text-gray-900">{listing.title}</h2>
-        <div className="flex flex-wrap gap-3 text-sm text-gray-600 mt-2">
-          {listing.price != null && (
-            <span className="font-medium text-gray-900">
-              {listing.price.toLocaleString("fr-FR")} &euro;
-              <PriceTrend history={priceHistory} />
-            </span>
-          )}
-          {listing.sqm != null && <span>{listing.sqm} m&sup2;</span>}
-          {listing.price_per_sqm != null && (
-            <span>{listing.price_per_sqm.toLocaleString("fr-FR")} &euro;/m&sup2;</span>
-          )}
-          {listing.bedrooms != null && <span>{listing.bedrooms} ch.</span>}
-        </div>
-        {(listing.city || listing.district) && (
-          <p className="text-sm text-gray-500 mt-1">
-            {[listing.district, listing.city].filter(Boolean).join(", ")}
-          </p>
-        )}
-        {listing.last_seen_at && (
-          <p className="text-xs text-gray-400 mt-1">
-            Last updated: {new Date(listing.last_seen_at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-          </p>
-        )}
-        {listing.description && (
-          <p className="text-sm text-gray-600 mt-3">{listing.description}</p>
-        )}
-
-        {contactForm}
-
-        {listing.external_url && (
-          <a
-            href={listing.external_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block mt-3 text-sm text-indigo-600 hover:underline"
-          >
-            View original listing &rarr;
-          </a>
-        )}
+      <div className="-mx-4 sm:mx-0">
+        <Gallery
+          photos={listing.photos}
+          heightClass="h-64 sm:h-96 lg:h-[30rem]"
+          hideThumbnailsOnMobile
+        />
       </div>
 
-      <PriceChart history={priceHistory} />
+      <div
+        className={`mt-7 grid items-start gap-x-8 gap-y-8 ${
+          managementPanel ? "lg:grid-cols-[minmax(0,1fr)_22rem]" : "lg:grid-cols-[minmax(0,48rem)]"
+        }`}
+      >
+        <div className="min-w-0">
+          <header className="border-b border-gray-200 pb-7">
+            <h1 className="text-2xl font-semibold tracking-tight text-gray-950 sm:text-3xl">
+              {listing.title}
+            </h1>
+            <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-2 text-sm text-gray-600">
+              {listing.price != null && (
+                <span className="text-xl font-semibold text-gray-950">
+                  {listing.price.toLocaleString("fr-FR")} &euro;
+                  <PriceTrend history={priceHistory} />
+                </span>
+              )}
+              {listing.sqm != null && <span>{listing.sqm} m&sup2;</span>}
+              {listing.price_per_sqm != null && (
+                <span>{listing.price_per_sqm.toLocaleString("fr-FR")} &euro;/m&sup2;</span>
+              )}
+              {listing.bedrooms != null && <span>{listing.bedrooms} ch.</span>}
+            </div>
+            {(listing.city || listing.district) && (
+              <p className="mt-2 text-sm text-gray-600">
+                {[listing.district, listing.city].filter(Boolean).join(", ")}
+              </p>
+            )}
+            {listing.last_seen_at && (
+              <p className="mt-1 text-xs text-gray-400">
+                Last updated: {new Date(listing.last_seen_at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+              </p>
+            )}
+          </header>
 
-      {commentsSection}
+          <main className="mt-8 min-w-0 space-y-8">
+            {listing.description && (
+              <section>
+                <h2 className="text-lg font-semibold text-gray-900">Description</h2>
+                <p className="mt-4 max-w-3xl text-[15px] leading-7 text-gray-600">
+                  {listing.description}
+                </p>
+              </section>
+            )}
 
-      <div className="mt-6 pb-8 border-t pt-4">
-        {bottomAction}
+            {listing.external_url && (
+              <a
+                href={listing.external_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-h-11 items-center text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              >
+                View original listing &rarr;
+              </a>
+            )}
+
+            {commentsSection}
+
+            {!managementPanel && (
+              <div className="border-t border-gray-200 pb-8 pt-6">
+                {bottomAction}
+              </div>
+            )}
+          </main>
+        </div>
+
+        {managementPanel && (
+          <aside className="lg:sticky lg:top-20">
+            <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+              {managementPanel}
+              <div className="border-t border-gray-100 px-5 py-4 sm:px-6">
+                {bottomAction}
+              </div>
+            </div>
+          </aside>
+        )}
       </div>
     </div>
   );

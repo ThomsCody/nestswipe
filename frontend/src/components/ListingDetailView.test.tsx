@@ -1,7 +1,7 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
-import ListingDetailView from "./ListingDetailView";
+import ListingDetailView, { ContactForm } from "./ListingDetailView";
 import { renderWithProviders } from "@/test/utils";
 import type { Listing, PriceHistoryEntry } from "@/types";
 
@@ -113,5 +113,32 @@ describe("ListingDetailView", () => {
     const link = screen.getByText(/View original listing/);
     expect(link).toHaveAttribute("href", "https://example.com/listing/1");
     expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  it("shows a compact mobile contact summary that can be expanded", async () => {
+    renderWithProviders(
+      <ContactForm
+        visitDate="2026-09-16T12:00"
+        location="33 rue Georges Sand"
+        sellerName="Barnes"
+        sellerPhone="01 23 45 67 89"
+        sellerIsAgency
+        onVisitDateChange={vi.fn()}
+        onLocationChange={vi.fn()}
+        onSellerNameChange={vi.fn()}
+        onSellerPhoneChange={vi.fn()}
+        onSellerIsAgencyChange={vi.fn()}
+      />,
+      { token: "t" },
+    );
+
+    expect(screen.getByText("33 rue Georges Sand")).toBeInTheDocument();
+    expect(screen.getByText("Barnes · 01 23 45 67 89")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByRole("button", { name: "Close" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
   });
 });

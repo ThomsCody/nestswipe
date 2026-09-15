@@ -61,6 +61,8 @@ function Lightbox({
     >
       <button
         onClick={onClose}
+        type="button"
+        aria-label="Close gallery"
         className="absolute top-4 right-4 text-white/70 hover:text-white z-10"
       >
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -75,6 +77,8 @@ function Lightbox({
       {photos.length > 1 && (
         <button
           onClick={(e) => { e.stopPropagation(); goPrev(); }}
+          type="button"
+          aria-label="Previous photo"
           className="absolute left-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white p-2"
         >
           <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -96,6 +100,8 @@ function Lightbox({
       {photos.length > 1 && (
         <button
           onClick={(e) => { e.stopPropagation(); goNext(); }}
+          type="button"
+          aria-label="Next photo"
           className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white p-2"
         >
           <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -114,9 +120,14 @@ function Lightbox({
 interface GalleryProps {
   photos: Listing["photos"];
   heightClass?: string;
+  hideThumbnailsOnMobile?: boolean;
 }
 
-export default function Gallery({ photos, heightClass = "h-72" }: GalleryProps) {
+export default function Gallery({
+  photos,
+  heightClass = "h-72",
+  hideThumbnailsOnMobile = false,
+}: GalleryProps) {
   const [selected, setSelected] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const touchStartX = useRef<number | null>(null);
@@ -154,7 +165,9 @@ export default function Gallery({ photos, heightClass = "h-72" }: GalleryProps) 
           <>
             <button
               onClick={(e) => { e.stopPropagation(); goPrev(); }}
-              className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-black/70"
+              type="button"
+              aria-label="Previous photo"
+              className="absolute left-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -162,7 +175,9 @@ export default function Gallery({ photos, heightClass = "h-72" }: GalleryProps) 
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); goNext(); }}
-              className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-black/70"
+              type="button"
+              aria-label="Next photo"
+              className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -175,22 +190,28 @@ export default function Gallery({ photos, heightClass = "h-72" }: GalleryProps) 
         )}
       </div>
       {photos.length > 1 && (
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          {photos.map((p, i) => (
-            <button
-              key={p.id}
-              onClick={() => setSelected(i)}
-              className={`flex-shrink-0 w-16 h-16 rounded overflow-hidden border-2 ${
-                i === selected ? "border-indigo-500" : "border-transparent"
-              }`}
-            >
-              <img
-                src={photoUrl(p.s3_key)}
-                alt=""
-                className="w-full h-full object-cover"
-              />
-            </button>
-          ))}
+        <div
+          className={`${hideThumbnailsOnMobile ? "hidden sm:block" : "block"} overflow-x-auto pb-2`}
+        >
+          <div className="mx-auto flex w-max gap-2">
+            {photos.map((p, i) => (
+              <button
+                key={p.id}
+                onClick={() => setSelected(i)}
+                type="button"
+                aria-label={`Show photo ${i + 1}`}
+                className={`h-16 w-16 flex-shrink-0 overflow-hidden rounded border-2 ${
+                  i === selected ? "border-indigo-500" : "border-transparent"
+                }`}
+              >
+                <img
+                  src={photoUrl(p.s3_key)}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              </button>
+            ))}
+          </div>
         </div>
       )}
       {lightboxOpen && (

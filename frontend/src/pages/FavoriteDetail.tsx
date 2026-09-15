@@ -49,6 +49,8 @@ export default function FavoriteDetail() {
   const [sellerName, setSellerName] = useState("");
   const [sellerPhone, setSellerPhone] = useState("");
   const [sellerIsAgency, setSellerIsAgency] = useState(false);
+  const [status, setStatus] = useState("");
+  const [ownerId, setOwnerId] = useState("");
 
   const { data, isLoading, isError, refetch } = useQuery<FavoriteDetailData>({
     queryKey: ["favorite", id],
@@ -80,6 +82,8 @@ export default function FavoriteDetail() {
       setSellerName(data.seller_name ?? data.listing.agent_name ?? data.listing.agency_name ?? "");
       setSellerPhone(data.seller_phone ?? data.listing.contact_phone ?? "");
       setSellerIsAgency(data.seller_is_agency ?? !!data.listing.agency_name);
+      setStatus(data.status);
+      setOwnerId(data.owner?.id != null ? String(data.owner.id) : "");
     }
   }, [data]);
 
@@ -92,13 +96,20 @@ export default function FavoriteDetail() {
     },
   });
 
-  const isDirty =
-    data != null &&
-    (visitDate !== (data.visit_date ? data.visit_date.slice(0, 16) : "") ||
-      location !== (data.location ?? "") ||
-      sellerName !== (data.seller_name ?? "") ||
-      sellerPhone !== (data.seller_phone ?? "") ||
-      sellerIsAgency !== (data.seller_is_agency ?? false));
+  const savedSellerName =
+    data?.seller_name ?? data?.listing.agent_name ?? data?.listing.agency_name ?? "";
+  const savedSellerPhone = data?.seller_phone ?? data?.listing.contact_phone ?? "";
+  const savedSellerIsAgency = data?.seller_is_agency ?? !!data?.listing.agency_name;
+
+  const isDirty = data != null && (
+    visitDate !== (data.visit_date ? data.visit_date.slice(0, 16) : "") ||
+    location !== (data.location ?? "") ||
+    sellerName !== savedSellerName ||
+    sellerPhone !== savedSellerPhone ||
+    sellerIsAgency !== savedSellerIsAgency ||
+    status !== data.status ||
+    ownerId !== (data.owner?.id != null ? String(data.owner.id) : "")
+  );
 
   const deleteMutation = useMutation({
     mutationFn: () => client.delete(`/favorites/${id}`),
@@ -135,15 +146,22 @@ export default function FavoriteDetail() {
       priceHistory={data.price_history}
       backLabel="Back to favorites"
       backTo="/favorites"
-      contactForm={
-        <>
-          <div className="grid grid-cols-2 gap-3 mb-4">
+      managementPanel={
+        <div className="p-5 sm:p-6">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-950">Favorite follow-up</h2>
+            <p className="mt-1 text-sm leading-5 text-gray-500">
+              Keep the next steps and contact details together.
+            </p>
+          </div>
+
+          <div className="mt-5 space-y-4">
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Statut</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">Status</label>
               <select
-                value={data.status}
-                onChange={(e) => updateMutation.mutate({ status: e.target.value })}
-                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="min-h-11 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
               >
                 {statuses?.map((s) => (
                   <option key={s.id} value={s.id}>{s.label}</option>
@@ -151,38 +169,41 @@ export default function FavoriteDetail() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Assign&eacute; &agrave;</label>
+              <label className="mb-1.5 block text-xs font-medium text-gray-500">Assigned to</label>
               <select
-                value={data.owner?.id ?? ""}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  updateMutation.mutate({ owner_id: val ? Number(val) : null });
-                }}
-                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                value={ownerId}
+                onChange={(e) => setOwnerId(e.target.value)}
+                className="min-h-11 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
               >
-                <option value="">Personne</option>
+                <option value="">Nobody</option>
                 {household?.members.map((m) => (
                   <option key={m.id} value={m.id}>{m.name}</option>
                 ))}
               </select>
             </div>
           </div>
+
           <ContactForm
             visitDate={visitDate}
             location={location}
             sellerName={sellerName}
             sellerPhone={sellerPhone}
             sellerIsAgency={sellerIsAgency}
-            isDirty={isDirty}
-            isSaving={updateMutation.isPending}
             listing={data.listing}
             onVisitDateChange={setVisitDate}
             onLocationChange={setLocation}
             onSellerNameChange={setSellerName}
             onSellerPhoneChange={setSellerPhone}
             onSellerIsAgencyChange={setSellerIsAgency}
-            onSave={() =>
+          />
+
+          <button
+            type="button"
+            disabled={!isDirty || updateMutation.isPending}
+            onClick={() =>
               updateMutation.mutate({
+                status,
+                owner_id: ownerId ? Number(ownerId) : null,
                 visit_date: visitDate || null,
                 location: location || null,
                 seller_name: sellerName || null,
@@ -190,8 +211,11 @@ export default function FavoriteDetail() {
                 seller_is_agency: sellerIsAgency,
               })
             }
-          />
-        </>
+            className="mt-5 min-h-11 w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {updateMutation.isPending ? "Saving..." : "Save changes"}
+          </button>
+        </div>
       }
       commentsSection={
         <CommentsSection
@@ -205,8 +229,9 @@ export default function FavoriteDetail() {
       }
       bottomAction={
         <button
+          type="button"
           onClick={() => deleteMutation.mutate()}
-          className="text-sm text-red-500 hover:text-red-700"
+          className="min-h-11 text-sm font-medium text-red-500 hover:text-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
         >
           Remove from favorites
         </button>
