@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.interaction import Favorite
+from app.models.interaction import Favorite, FavoriteStatus
 from app.models.listing import Listing, ListingPhoto, PriceHistory
 from app.models.user import User
 from app.services.browser_scraper import (
@@ -198,6 +198,7 @@ async def import_listing_from_url(
 
     if favorite:
         already_favorited = True
+        favorite.status = FavoriteStatus.to_contact
     else:
         favorite = Favorite(
             household_id=user.household_id,
