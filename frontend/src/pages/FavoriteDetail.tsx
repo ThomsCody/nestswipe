@@ -143,6 +143,7 @@ export default function FavoriteDetail() {
   return (
     <ListingDetailView
       listing={data.listing}
+      createdAt={data.created_at}
       priceHistory={data.price_history}
       backLabel="Back to favorites"
       backTo="/favorites"
