@@ -17,6 +17,7 @@ from app.services.duplicate_detector import compute_fingerprint, find_duplicate
 from app.services.llm_extractor import extract_listing_from_page
 from app.services.photo_classifier import classify_photos
 from app.services.photo_cleanup import PLACEHOLDER_S3_KEY
+from app.config import settings
 from app.services.photo_storage import (
     compute_phash,
     download_photo,
@@ -208,8 +209,8 @@ async def import_listing_from_url(
 
         logger.info("Created new listing %d: %s", listing.id, listing.title)
 
-    # Re-importing can revive a listing whose photos were removed by cleanup.
-    # Keep real galleries, but replace placeholders once new photos are ready.
+    # Replace the gallery only once fresh photos have downloaded and passed classification.
+    replaced_keys: set[str] = set()
     if photo_data:
         stored_photos = list(
             (
@@ -218,25 +219,29 @@ async def import_listing_from_url(
                 )
             ).all()
         )
-        if not any(photo.s3_key != PLACEHOLDER_S3_KEY for photo in stored_photos):
-            minio_client = get_minio_client()
-            ensure_bucket(minio_client)
-            for i, (img_bytes, phash, original_url) in enumerate(photo_data):
-                s3_key = upload_photo(minio_client, img_bytes)
-                db.add(
-                    ListingPhoto(
-                        listing_id=listing.id,
-                        s3_key=s3_key,
-                        original_url=original_url,
-                        phash=phash,
-                        position=i,
-                    )
+        minio_client = get_minio_client()
+        ensure_bucket(minio_client)
+        for i, (img_bytes, phash, original_url) in enumerate(photo_data):
+            s3_key = upload_photo(minio_client, img_bytes)
+            db.add(
+                ListingPhoto(
+                    listing_id=listing.id,
+                    s3_key=s3_key,
+                    original_url=original_url,
+                    phash=phash,
+                    position=i,
                 )
-            for photo in stored_photos:
-                await db.delete(photo)
-            logger.info(
-                "Stored %d photos for imported listing %d", len(photo_data), listing.id
             )
+        for photo in stored_photos:
+            await db.delete(photo)
+        logger.info(
+            "Stored %d photos for imported listing %d", len(photo_data), listing.id
+        )
+        replaced_keys = {
+            photo.s3_key
+            for photo in stored_photos
+            if photo.s3_key != PLACEHOLDER_S3_KEY
+        }
 
     # 7. Create favorite if not already favorited
     already_favorited = False
@@ -264,6 +269,17 @@ async def import_listing_from_url(
     await db.commit()
     await db.refresh(favorite)
     await db.refresh(listing)
+
+    # Old objects stay available until the replacement gallery is committed.
+    for key in replaced_keys:
+        try:
+            referenced = await db.scalar(
+                select(ListingPhoto.id).where(ListingPhoto.s3_key == key).limit(1)
+            )
+            if referenced is None:
+                minio_client.remove_object(settings.minio_bucket, key)
+        except Exception:
+            logger.exception("Failed to remove replaced photo %s", key)
 
     return ImportResult(
         favorite=favorite,

@@ -190,11 +190,12 @@ async def test_import_existing_favorite_resets_only_status(db_session, test_user
     [
         (None, True, ["photos/restored.jpg"]),
         ("photos/_placeholder.jpg", True, ["photos/restored.jpg"]),
-        ("photos/real.jpg", True, ["photos/real.jpg"]),
+        ("photos/real.jpg", True, ["photos/restored.jpg"]),
+        ("photos/real.jpg", False, ["photos/real.jpg"]),
         ("photos/_placeholder.jpg", False, ["photos/_placeholder.jpg"]),
     ],
 )
-async def test_reimport_restores_missing_photos(
+async def test_reimport_refreshes_photos(
     db_session, test_user, existing_key, download_succeeds, expected_keys
 ):
     from app.models.listing import ListingPhoto
@@ -249,7 +250,7 @@ async def test_reimport_restores_missing_photos(
             "app.services.import_listing.classify_photos",
             AsyncMock(return_value=(photo_data, 0, 0)),
         ),
-        patch("app.services.import_listing.get_minio_client"),
+        patch("app.services.import_listing.get_minio_client") as minio,
         patch("app.services.import_listing.ensure_bucket"),
         patch(
             "app.services.import_listing.upload_photo",
@@ -266,6 +267,10 @@ async def test_reimport_restores_missing_photos(
     assert result.created is False
     assert [photo.s3_key for photo in photos] == expected_keys
     assert upload.call_count == (1 if expected_keys == ["photos/restored.jpg"] else 0)
+    if existing_key == "photos/real.jpg" and download_succeeds:
+        minio.return_value.remove_object.assert_called_once()
+    else:
+        minio.return_value.remove_object.assert_not_called()
     if upload.called:
         assert photos[0].original_url == photo_url
         assert photos[0].phash == "1234"
