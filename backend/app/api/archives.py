@@ -9,7 +9,14 @@ from app.database import get_db
 from app.models.interaction import Favorite, SwipeAction, SwipeDirection
 from app.models.listing import Listing
 from app.models.user import User
-from app.schemas.listing import ArchiveDetailResponse, ArchiveListItem, ArchivesListResponse, ListingResponse, PhotoResponse, PriceHistoryItem
+from app.schemas.listing import (
+    ArchiveDetailResponse,
+    ArchiveListItem,
+    ArchivesListResponse,
+    ListingResponse,
+    PhotoResponse,
+    PriceHistoryItem,
+)
 from app.services.lookup_listing import LookupError, lookup_listing_in_archive
 
 router = APIRouter()
@@ -34,11 +41,17 @@ def _listing_response(listing: Listing) -> ListingResponse:
         contact_phone=listing.contact_phone,
         agency_name=listing.agency_name,
         agent_name=listing.agent_name,
-        photos=[PhotoResponse.model_validate(p) for p in sorted(listing.photos, key=lambda p: p.position)],
+        photos=[
+            PhotoResponse.model_validate(p)
+            for p in sorted(listing.photos, key=lambda p: p.position)
+        ],
         price_history=[
             PriceHistoryItem(price=ph.price, observed_at=ph.observed_at.isoformat())
             for ph in sorted(listing.price_history, key=lambda ph: ph.observed_at)
         ],
+        first_seen_at=listing.first_seen_at.isoformat()
+        if listing.first_seen_at
+        else None,
         last_seen_at=listing.last_seen_at.isoformat() if listing.last_seen_at else None,
     )
 
@@ -55,19 +68,32 @@ async def get_archives(
     household_user_ids = select(User.id).where(User.household_id == user.household_id)
 
     # Exclude listings already in household favorites
-    fav_subq = select(Favorite.listing_id).where(Favorite.household_id == user.household_id).subquery()
+    fav_subq = (
+        select(Favorite.listing_id)
+        .where(Favorite.household_id == user.household_id)
+        .subquery()
+    )
 
     base_query = (
         select(SwipeAction)
-        .where(SwipeAction.user_id.in_(household_user_ids), SwipeAction.action == SwipeDirection.pass_)
+        .where(
+            SwipeAction.user_id.in_(household_user_ids),
+            SwipeAction.action == SwipeDirection.pass_,
+        )
         .join(Listing, SwipeAction.listing_id == Listing.id)
         .where(SwipeAction.listing_id.notin_(select(fav_subq)))
     )
 
-    count_result = await db.execute(select(func.count()).select_from(base_query.subquery()))
+    count_result = await db.execute(
+        select(func.count()).select_from(base_query.subquery())
+    )
     total = count_result.scalar() or 0
 
-    order = SwipeAction.created_at.desc() if sort == "newest" else SwipeAction.created_at.asc()
+    order = (
+        SwipeAction.created_at.desc()
+        if sort == "newest"
+        else SwipeAction.created_at.asc()
+    )
 
     query = (
         base_query.options(
@@ -132,7 +158,9 @@ async def get_archive_detail(
     )
     swipe = result.scalar_one_or_none()
     if not swipe:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Archived listing not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Archived listing not found"
+        )
 
     listing = swipe.listing
     price_history = sorted(listing.price_history, key=lambda ph: ph.observed_at)
@@ -165,7 +193,9 @@ async def restore_archive(
     )
     swipe = result.scalar_one_or_none()
     if not swipe:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Archived listing not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Archived listing not found"
+        )
 
     # Flip the pass swipe to a like so it doesn't reappear in queue
     swipe.action = SwipeDirection.like
@@ -179,7 +209,9 @@ async def restore_archive(
     )
     if not existing_fav.scalar_one_or_none():
         # Load listing to pre-fill contact fields
-        listing_result = await db.execute(select(Listing).where(Listing.id == listing_id))
+        listing_result = await db.execute(
+            select(Listing).where(Listing.id == listing_id)
+        )
         listing = listing_result.scalar_one_or_none()
         fav = Favorite(
             household_id=user.household_id,

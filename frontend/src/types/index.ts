@@ -26,6 +26,7 @@ export interface Listing {
   agent_name?: string;
   photos: ListingPhoto[];
   price_history?: PriceHistoryEntry[];
+  first_seen_at?: string;
   last_seen_at?: string;
 }
 

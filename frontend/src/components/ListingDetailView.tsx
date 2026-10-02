@@ -322,7 +322,6 @@ export interface ListingDetailViewProps {
   priceHistory: PriceHistoryEntry[];
   backLabel: string;
   backTo: string;
-  createdAt?: string;
   managementPanel?: ReactNode;
   commentsSection?: ReactNode;
   bottomAction: ReactNode;
@@ -335,7 +334,6 @@ export default function ListingDetailView({
   priceHistory,
   backLabel,
   backTo,
-  createdAt,
   managementPanel,
   commentsSection,
   bottomAction,
@@ -387,9 +385,9 @@ export default function ListingDetailView({
                 {[listing.district, listing.city].filter(Boolean).join(", ")}
               </p>
             )}
-            {createdAt && (
+            {listing.first_seen_at && (
               <p className="mt-1 text-xs text-gray-400">
-                Created: {new Date(createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                First seen: {new Date(listing.first_seen_at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
               </p>
             )}
             {listing.last_seen_at && (

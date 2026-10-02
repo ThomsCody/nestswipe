@@ -36,6 +36,7 @@ class ListingResponse(BaseModel):
     agent_name: str | None = None
     photos: list[PhotoResponse]
     price_history: list[PriceHistoryItem] = []
+    first_seen_at: str | None = None
     last_seen_at: str | None = None
 
     model_config = {"from_attributes": True}

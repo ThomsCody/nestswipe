@@ -12,31 +12,62 @@ from app.services.llm_extractor import ExtractedListing
 
 class TestDetectSourceFromUrl:
     def test_seloger(self):
-        assert detect_source_from_url("https://www.seloger.com/annonces/achat/appartement/paris/228288697.htm") == "seloger"
+        assert (
+            detect_source_from_url(
+                "https://www.seloger.com/annonces/achat/appartement/paris/228288697.htm"
+            )
+            == "seloger"
+        )
 
     def test_seloger_no_www(self):
-        assert detect_source_from_url("https://seloger.com/annonces/123.htm") == "seloger"
+        assert (
+            detect_source_from_url("https://seloger.com/annonces/123.htm") == "seloger"
+        )
 
     def test_bellesdemeures(self):
-        assert detect_source_from_url("https://www.bellesdemeures.com/annonces/vente/256203535/") == "seloger"
+        assert (
+            detect_source_from_url(
+                "https://www.bellesdemeures.com/annonces/vente/256203535/"
+            )
+            == "seloger"
+        )
 
     def test_pap(self):
-        assert detect_source_from_url("https://www.pap.fr/annonces/-r461702551") == "pap"
+        assert (
+            detect_source_from_url("https://www.pap.fr/annonces/-r461702551") == "pap"
+        )
 
     def test_consultantsimmobilier(self):
-        assert detect_source_from_url("https://www.consultantsimmobilier.com/listing/123") == "consultantsimmobilier"
+        assert (
+            detect_source_from_url("https://www.consultantsimmobilier.com/listing/123")
+            == "consultantsimmobilier"
+        )
 
     def test_ap_immo(self):
-        assert detect_source_from_url("https://ap.immo/p/86783633?u=foo") == "consultantsimmobilier"
+        assert (
+            detect_source_from_url("https://ap.immo/p/86783633?u=foo")
+            == "consultantsimmobilier"
+        )
 
     def test_barnes(self):
-        assert detect_source_from_url("https://www.barnes-international.com/en/123") == "barnes"
+        assert (
+            detect_source_from_url("https://www.barnes-international.com/en/123")
+            == "barnes"
+        )
 
     def test_leboncoin(self):
-        assert detect_source_from_url("https://www.leboncoin.fr/vi/3173154827.htm") == "leboncoin"
+        assert (
+            detect_source_from_url("https://www.leboncoin.fr/vi/3173154827.htm")
+            == "leboncoin"
+        )
 
     def test_leboncoin_ad_url(self):
-        assert detect_source_from_url("https://www.leboncoin.fr/ad/ventes_immobilieres/3183368834") == "leboncoin"
+        assert (
+            detect_source_from_url(
+                "https://www.leboncoin.fr/ad/ventes_immobilieres/3183368834"
+            )
+            == "leboncoin"
+        )
 
     def test_unknown_domain(self):
         assert detect_source_from_url("https://www.example.com/listing/123") is None
@@ -149,4 +180,93 @@ async def test_import_existing_favorite_resets_only_status(db_session, test_user
     comments = await db_session.execute(
         select(Comment).where(Comment.favorite_id == result.favorite.id)
     )
-    assert [existing.body for existing in comments.scalars()] == ["Commentaire existant"]
+    assert [existing.body for existing in comments.scalars()] == [
+        "Commentaire existant"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("existing_key", "download_succeeds", "expected_keys"),
+    [
+        (None, True, ["photos/restored.jpg"]),
+        ("photos/_placeholder.jpg", True, ["photos/restored.jpg"]),
+        ("photos/real.jpg", True, ["photos/real.jpg"]),
+        ("photos/_placeholder.jpg", False, ["photos/_placeholder.jpg"]),
+    ],
+)
+async def test_reimport_restores_missing_photos(
+    db_session, test_user, existing_key, download_succeeds, expected_keys
+):
+    from app.models.listing import ListingPhoto
+
+    url = "https://www.bellesdemeures.com/annonces/vente/280623435/"
+    test_user.openai_api_key = "test-key"
+    listing = Listing(
+        household_id=test_user.household_id,
+        user_id=test_user.id,
+        source="seloger",
+        source_id="280623435",
+        external_url=url,
+        title="Appartement",
+    )
+    db_session.add(listing)
+    await db_session.flush()
+    if existing_key:
+        db_session.add(
+            ListingPhoto(listing_id=listing.id, s3_key=existing_key, position=0)
+        )
+    await db_session.commit()
+    photo_url = "https://v.seloger.com/property.jpg"
+    photo_data = [(b"image", "1234", photo_url)] if download_succeeds else []
+    with (
+        patch(
+            "app.services.import_listing.scrape_listing",
+            AsyncMock(
+                return_value=ScrapedListing(
+                    resolved_url=url,
+                    source_id="280623435",
+                    page_text="Appartement",
+                    photo_urls=[photo_url],
+                )
+            ),
+        ),
+        patch(
+            "app.services.import_listing.extract_listing_from_page",
+            AsyncMock(
+                return_value=(
+                    ExtractedListing(is_listing=True, title="Appartement"),
+                    0,
+                    0,
+                )
+            ),
+        ),
+        patch(
+            "app.services.import_listing.download_photo",
+            AsyncMock(return_value=b"image" if download_succeeds else None),
+        ),
+        patch("app.services.import_listing.compute_phash", return_value="1234"),
+        patch(
+            "app.services.import_listing.classify_photos",
+            AsyncMock(return_value=(photo_data, 0, 0)),
+        ),
+        patch("app.services.import_listing.get_minio_client"),
+        patch("app.services.import_listing.ensure_bucket"),
+        patch(
+            "app.services.import_listing.upload_photo",
+            return_value="photos/restored.jpg",
+        ) as upload,
+    ):
+        result = await import_listing_from_url(url, test_user, db_session)
+    photos = (
+        await db_session.scalars(
+            select(ListingPhoto).where(ListingPhoto.listing_id == listing.id)
+        )
+    ).all()
+    assert result.listing.id == listing.id
+    assert result.created is False
+    assert [photo.s3_key for photo in photos] == expected_keys
+    assert upload.call_count == (1 if expected_keys == ["photos/restored.jpg"] else 0)
+    if upload.called:
+        assert photos[0].original_url == photo_url
+        assert photos[0].phash == "1234"
+        assert photos[0].position == 0

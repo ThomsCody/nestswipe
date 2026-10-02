@@ -36,13 +36,19 @@ async def get_queue(
     db: AsyncSession = Depends(get_db),
 ):
     # Get listing IDs the user has already swiped on
-    swiped_subq = select(SwipeAction.listing_id).where(SwipeAction.user_id == user.id).subquery()
+    swiped_subq = (
+        select(SwipeAction.listing_id).where(SwipeAction.user_id == user.id).subquery()
+    )
 
     # Only show listings that have at least one photo
     has_photos_subq = select(ListingPhoto.listing_id).distinct().subquery()
 
     # Exclude listings already in household favorites
-    fav_subq = select(Favorite.listing_id).where(Favorite.household_id == user.household_id).subquery()
+    fav_subq = (
+        select(Favorite.listing_id)
+        .where(Favorite.household_id == user.household_id)
+        .subquery()
+    )
 
     # Get unseen listings for this household
     queue_filters = [
@@ -86,11 +92,17 @@ async def get_queue(
                 contact_phone=l.contact_phone,
                 agency_name=l.agency_name,
                 agent_name=l.agent_name,
-                photos=[PhotoResponse.model_validate(p) for p in sorted(l.photos, key=lambda p: p.position)],
+                photos=[
+                    PhotoResponse.model_validate(p)
+                    for p in sorted(l.photos, key=lambda p: p.position)
+                ],
                 price_history=[
-                    PriceHistoryItem(price=ph.price, observed_at=ph.observed_at.isoformat())
+                    PriceHistoryItem(
+                        price=ph.price, observed_at=ph.observed_at.isoformat()
+                    )
                     for ph in sorted(l.price_history, key=lambda ph: ph.observed_at)
                 ],
+                first_seen_at=l.first_seen_at.isoformat() if l.first_seen_at else None,
                 last_seen_at=l.last_seen_at.isoformat() if l.last_seen_at else None,
             )
             for l in listings
@@ -146,7 +158,12 @@ async def import_url(
                 PriceHistoryItem(price=ph.price, observed_at=ph.observed_at.isoformat())
                 for ph in price_history
             ],
-            last_seen_at=listing.last_seen_at.isoformat() if listing.last_seen_at else None,
+            first_seen_at=listing.first_seen_at.isoformat()
+            if listing.first_seen_at
+            else None,
+            last_seen_at=listing.last_seen_at.isoformat()
+            if listing.last_seen_at
+            else None,
         ),
         created=result.created,
         already_favorited=result.already_favorited,
@@ -161,20 +178,31 @@ async def swipe(
     db: AsyncSession = Depends(get_db),
 ):
     if body.action not in ("like", "pass"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Action must be 'like' or 'pass'")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Action must be 'like' or 'pass'",
+        )
 
     # Verify listing belongs to user's household
-    result = await db.execute(select(Listing).where(Listing.id == listing_id, Listing.user_id == user.id))
+    result = await db.execute(
+        select(Listing).where(Listing.id == listing_id, Listing.user_id == user.id)
+    )
     listing = result.scalar_one_or_none()
     if not listing:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Listing not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Listing not found"
+        )
 
     # Check if already swiped
     existing = await db.execute(
-        select(SwipeAction).where(SwipeAction.user_id == user.id, SwipeAction.listing_id == listing_id)
+        select(SwipeAction).where(
+            SwipeAction.user_id == user.id, SwipeAction.listing_id == listing_id
+        )
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already swiped")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Already swiped"
+        )
 
     direction = SwipeDirection.like if body.action == "like" else SwipeDirection.pass_
     db.add(SwipeAction(user_id=user.id, listing_id=listing_id, action=direction))
@@ -182,16 +210,21 @@ async def swipe(
     # If liked, create a household favorite (if not exists)
     if body.action == "like":
         fav_result = await db.execute(
-            select(Favorite).where(Favorite.household_id == user.household_id, Favorite.listing_id == listing_id)
+            select(Favorite).where(
+                Favorite.household_id == user.household_id,
+                Favorite.listing_id == listing_id,
+            )
         )
         if not fav_result.scalar_one_or_none():
-            db.add(Favorite(
-                household_id=user.household_id,
-                listing_id=listing_id,
-                seller_name=listing.agency_name or listing.agent_name,
-                seller_phone=listing.contact_phone,
-                seller_is_agency=bool(listing.agency_name),
-            ))
+            db.add(
+                Favorite(
+                    household_id=user.household_id,
+                    listing_id=listing_id,
+                    seller_name=listing.agency_name or listing.agent_name,
+                    seller_phone=listing.contact_phone,
+                    seller_is_agency=bool(listing.agency_name),
+                )
+            )
 
     await db.commit()
     return {"status": "ok"}

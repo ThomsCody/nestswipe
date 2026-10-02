@@ -38,8 +38,7 @@ FAVORITE_STATUS_LABELS = {
 @router.get("/statuses")
 async def list_statuses():
     return [
-        {"id": s.value, "label": label}
-        for s, label in FAVORITE_STATUS_LABELS.items()
+        {"id": s.value, "label": label} for s, label in FAVORITE_STATUS_LABELS.items()
     ]
 
 
@@ -62,11 +61,17 @@ def _listing_response(listing: Listing) -> ListingResponse:
         contact_phone=listing.contact_phone,
         agency_name=listing.agency_name,
         agent_name=listing.agent_name,
-        photos=[PhotoResponse.model_validate(p) for p in sorted(listing.photos, key=lambda p: p.position)],
+        photos=[
+            PhotoResponse.model_validate(p)
+            for p in sorted(listing.photos, key=lambda p: p.position)
+        ],
         price_history=[
             PriceHistoryItem(price=ph.price, observed_at=ph.observed_at.isoformat())
             for ph in sorted(listing.price_history, key=lambda ph: ph.observed_at)
         ],
+        first_seen_at=listing.first_seen_at.isoformat()
+        if listing.first_seen_at
+        else None,
         last_seen_at=listing.last_seen_at.isoformat() if listing.last_seen_at else None,
     )
 
@@ -85,15 +90,18 @@ async def get_favorites(
         base_query = base_query.where(Favorite.owner_id == owner_id)
 
     # Count
-    count_result = await db.execute(select(func.count()).select_from(base_query.subquery()))
+    count_result = await db.execute(
+        select(func.count()).select_from(base_query.subquery())
+    )
     total = count_result.scalar() or 0
 
     # Sort
-    order = Favorite.created_at.desc() if sort == "newest" else Favorite.created_at.asc()
+    order = (
+        Favorite.created_at.desc() if sort == "newest" else Favorite.created_at.asc()
+    )
 
     query = (
-        base_query
-        .options(
+        base_query.options(
             selectinload(Favorite.listing).selectinload(Listing.photos),
             selectinload(Favorite.listing).selectinload(Listing.price_history),
             selectinload(Favorite.comments),
@@ -114,7 +122,11 @@ async def get_favorites(
                 comment_count=len(f.comments),
                 has_visit_date=f.visit_date is not None,
                 status=f.status.value,
-                owner=FavoriteOwner(id=f.owner.id, name=f.owner.name, picture=f.owner.picture) if f.owner else None,
+                owner=FavoriteOwner(
+                    id=f.owner.id, name=f.owner.name, picture=f.owner.picture
+                )
+                if f.owner
+                else None,
                 created_at=f.created_at.isoformat(),
             )
             for f in favorites
@@ -141,7 +153,9 @@ async def get_favorite(
     )
     fav = result.scalar_one_or_none()
     if not fav:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Favorite not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Favorite not found"
+        )
 
     price_history = sorted(fav.listing.price_history, key=lambda ph: ph.observed_at)
 
@@ -168,7 +182,11 @@ async def get_favorite(
         seller_phone=fav.seller_phone,
         seller_is_agency=fav.seller_is_agency,
         status=fav.status.value,
-        owner=FavoriteOwner(id=fav.owner.id, name=fav.owner.name, picture=fav.owner.picture) if fav.owner else None,
+        owner=FavoriteOwner(
+            id=fav.owner.id, name=fav.owner.name, picture=fav.owner.picture
+        )
+        if fav.owner
+        else None,
         created_at=fav.created_at.isoformat(),
     )
 
@@ -193,7 +211,9 @@ async def update_favorite(
     )
     fav = result.scalar_one_or_none()
     if not fav:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Favorite not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Favorite not found"
+        )
 
     if body.visit_date is not None:
         fav.visit_date = datetime.fromisoformat(body.visit_date)
@@ -221,11 +241,13 @@ async def update_favorite(
     if new_owner_id is not None and new_owner_id != user.id:
         listing_title = fav.listing.title or "a listing"
         message = f"{user.name} t'a assign\u00e9 {listing_title}"
-        db.add(Notification(
-            user_id=new_owner_id,
-            favorite_id=fav.id,
-            message=message,
-        ))
+        db.add(
+            Notification(
+                user_id=new_owner_id,
+                favorite_id=fav.id,
+                message=message,
+            )
+        )
         # Send email if the assignee has email notifications enabled
         assignee_result = await db.execute(select(User).where(User.id == new_owner_id))
         assignee = assignee_result.scalar_one_or_none()
@@ -267,7 +289,11 @@ async def update_favorite(
         seller_phone=fav.seller_phone,
         seller_is_agency=fav.seller_is_agency,
         status=fav.status.value,
-        owner=FavoriteOwner(id=fav.owner.id, name=fav.owner.name, picture=fav.owner.picture) if fav.owner else None,
+        owner=FavoriteOwner(
+            id=fav.owner.id, name=fav.owner.name, picture=fav.owner.picture
+        )
+        if fav.owner
+        else None,
         created_at=fav.created_at.isoformat(),
     )
 
@@ -279,11 +305,15 @@ async def delete_favorite(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(Favorite).where(Favorite.id == favorite_id, Favorite.household_id == user.household_id)
+        select(Favorite).where(
+            Favorite.id == favorite_id, Favorite.household_id == user.household_id
+        )
     )
     fav = result.scalar_one_or_none()
     if not fav:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Favorite not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Favorite not found"
+        )
     await db.delete(fav)
     await db.commit()
     return {"status": "ok"}
@@ -304,7 +334,9 @@ async def add_comment(
     )
     fav = result.scalar_one_or_none()
     if not fav:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Favorite not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Favorite not found"
+        )
 
     comment = Comment(favorite_id=fav.id, user_id=user.id, body=body.body)
     db.add(comment)
@@ -314,7 +346,9 @@ async def add_comment(
     mentioned_names = set(re.findall(r"@(\w+)", body.body))
     if mentioned_names:
         hh_result = await db.execute(
-            select(Household).options(selectinload(Household.members)).where(Household.id == user.household_id)
+            select(Household)
+            .options(selectinload(Household.members))
+            .where(Household.id == user.household_id)
         )
         household = hh_result.scalar_one()
         listing_title = fav.listing.title or "a listing"
@@ -323,11 +357,13 @@ async def add_comment(
                 continue
             first_name = member.name.split()[0] if member.name else ""
             if any(first_name.lower() == name.lower() for name in mentioned_names):
-                db.add(Notification(
-                    user_id=member.id,
-                    comment_id=comment.id,
-                    favorite_id=fav.id,
-                ))
+                db.add(
+                    Notification(
+                        user_id=member.id,
+                        comment_id=comment.id,
+                        favorite_id=fav.id,
+                    )
+                )
                 if member.email_notifications:
                     background_tasks.add_task(
                         send_mention_email,
@@ -367,7 +403,9 @@ async def delete_comment(
     )
     comment = result.scalar_one_or_none()
     if not comment:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        )
     await db.delete(comment)
     await db.commit()
     return {"status": "ok"}

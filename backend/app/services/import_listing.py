@@ -16,6 +16,7 @@ from app.services.browser_scraper import (
 from app.services.duplicate_detector import compute_fingerprint, find_duplicate
 from app.services.llm_extractor import extract_listing_from_page
 from app.services.photo_classifier import classify_photos
+from app.services.photo_cleanup import PLACEHOLDER_S3_KEY
 from app.services.photo_storage import (
     compute_phash,
     download_photo,
@@ -50,32 +51,49 @@ async def import_listing_from_url(
     # 1. Detect source
     source = detect_source_from_url(url)
     if not source:
-        raise ImportError("Unsupported domain. Supported: seloger, pap, leboncoin, consultantsimmobilier, barnes, junot.")
+        raise ImportError(
+            "Unsupported domain. Supported: seloger, pap, leboncoin, consultantsimmobilier, barnes, junot."
+        )
 
     # 2. Resolve API key: user's own, otherwise any household member's
     api_key = user.openai_api_key
     if not api_key:
         result = await db.execute(
-            select(User.openai_api_key).where(
+            select(User.openai_api_key)
+            .where(
                 User.household_id == user.household_id,
                 User.openai_api_key.isnot(None),
-            ).limit(1)
+            )
+            .limit(1)
         )
         api_key = result.scalar_one_or_none()
         if api_key:
-            logger.info("User %d has no OpenAI key, falling back to household %d key", user.id, user.household_id)
+            logger.info(
+                "User %d has no OpenAI key, falling back to household %d key",
+                user.id,
+                user.household_id,
+            )
     if not api_key:
-        raise ImportError("No OpenAI API key available. You or a household member must set one in Settings.")
+        raise ImportError(
+            "No OpenAI API key available. You or a household member must set one in Settings."
+        )
 
     # 3. Scrape
     scraped = await scrape_listing(url, source)
     if not scraped.page_text:
-        raise ImportError("Could not load the listing page. The site may be blocking requests.", status_code=502)
+        raise ImportError(
+            "Could not load the listing page. The site may be blocking requests.",
+            status_code=502,
+        )
 
     # 4. LLM extraction
-    extracted, llm_inp, llm_out = await extract_listing_from_page(api_key, scraped.page_text, source)
+    extracted, llm_inp, llm_out = await extract_listing_from_page(
+        api_key, scraped.page_text, source
+    )
     if not extracted or not extracted.title:
-        raise ImportError("Could not extract listing data from the page.", status_code=502)
+        raise ImportError(
+            "Could not extract listing data from the page.", status_code=502
+        )
 
     # Set URL — keep original for ap.immo links (they carry auth params)
     if source in ("consultantsimmobilier", "barnes", "junot") and "ap.immo" in url:
@@ -91,8 +109,12 @@ async def import_listing_from_url(
         price_per_sqm = round(extracted.price / extracted.sqm, 2)
 
     fingerprint = compute_fingerprint(
-        source, extracted.city, extracted.district,
-        extracted.sqm, extracted.bedrooms, extracted.price,
+        source,
+        extracted.city,
+        extracted.district,
+        extracted.sqm,
+        extracted.bedrooms,
+        extracted.price,
     )
 
     # 5. Download + classify photos (optional — manual imports proceed without photos)
@@ -114,9 +136,13 @@ async def import_listing_from_url(
 
     # 6. Check for duplicates
     existing = await find_duplicate(
-        db, user.id, source,
-        extracted.source_id, extracted.external_url,
-        fingerprint, photo_phashes,
+        db,
+        user.id,
+        source,
+        extracted.source_id,
+        extracted.external_url,
+        fingerprint,
+        photo_phashes,
     )
 
     now = datetime.now(timezone.utc)
@@ -132,10 +158,20 @@ async def import_listing_from_url(
                 listing.price_per_sqm = round(extracted.price / listing.sqm, 2)
         # Backfill missing fields
         for fld in (
-            "title", "description", "sqm", "bedrooms", "rooms",
-            "floor", "city", "district", "location_detail",
-            "external_url", "source_id",
-            "contact_phone", "agency_name", "agent_name",
+            "title",
+            "description",
+            "sqm",
+            "bedrooms",
+            "rooms",
+            "floor",
+            "city",
+            "district",
+            "location_detail",
+            "external_url",
+            "source_id",
+            "contact_phone",
+            "agency_name",
+            "agent_name",
         ):
             new_val = getattr(extracted, fld, None)
             if new_val is not None and getattr(listing, fld, None) is None:
@@ -170,21 +206,37 @@ async def import_listing_from_url(
         if extracted.price:
             db.add(PriceHistory(listing_id=listing.id, price=extracted.price))
 
-        # Upload photos
-        if photo_data:
+        logger.info("Created new listing %d: %s", listing.id, listing.title)
+
+    # Re-importing can revive a listing whose photos were removed by cleanup.
+    # Keep real galleries, but replace placeholders once new photos are ready.
+    if photo_data:
+        stored_photos = list(
+            (
+                await db.scalars(
+                    select(ListingPhoto).where(ListingPhoto.listing_id == listing.id)
+                )
+            ).all()
+        )
+        if not any(photo.s3_key != PLACEHOLDER_S3_KEY for photo in stored_photos):
             minio_client = get_minio_client()
             ensure_bucket(minio_client)
             for i, (img_bytes, phash, original_url) in enumerate(photo_data):
                 s3_key = upload_photo(minio_client, img_bytes)
-                db.add(ListingPhoto(
-                    listing_id=listing.id,
-                    s3_key=s3_key,
-                    original_url=original_url,
-                    phash=phash,
-                    position=i,
-                ))
-
-        logger.info("Created new listing %d: %s", listing.id, listing.title)
+                db.add(
+                    ListingPhoto(
+                        listing_id=listing.id,
+                        s3_key=s3_key,
+                        original_url=original_url,
+                        phash=phash,
+                        position=i,
+                    )
+                )
+            for photo in stored_photos:
+                await db.delete(photo)
+            logger.info(
+                "Stored %d photos for imported listing %d", len(photo_data), listing.id
+            )
 
     # 7. Create favorite if not already favorited
     already_favorited = False
