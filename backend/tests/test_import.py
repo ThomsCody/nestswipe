@@ -207,7 +207,7 @@ async def test_reimport_refreshes_photos(
         user_id=test_user.id,
         source="seloger",
         source_id="280623435",
-        external_url=url,
+        external_url="https://www.bellesdemeures.com/old-listing/",
         title="Appartement",
     )
     db_session.add(listing)
@@ -264,6 +264,7 @@ async def test_reimport_refreshes_photos(
         )
     ).all()
     assert result.listing.id == listing.id
+    assert result.listing.external_url == url
     assert result.created is False
     assert [photo.s3_key for photo in photos] == expected_keys
     assert upload.call_count == (1 if expected_keys == ["photos/restored.jpg"] else 0)

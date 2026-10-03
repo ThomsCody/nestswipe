@@ -152,6 +152,8 @@ async def import_listing_from_url(
     if existing:
         listing = existing
         listing.last_seen_at = now
+        # A manual import may point to a newer publication of the same property.
+        listing.external_url = extracted.external_url
         if extracted.price and extracted.price != existing.price:
             db.add(PriceHistory(listing_id=existing.id, price=extracted.price))
             listing.price = extracted.price
@@ -168,7 +170,6 @@ async def import_listing_from_url(
             "city",
             "district",
             "location_detail",
-            "external_url",
             "source_id",
             "contact_phone",
             "agency_name",
