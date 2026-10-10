@@ -7,7 +7,9 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Database
-    database_url: str = "postgresql+asyncpg://rosen:rosen_secret@postgres:5432/nestswipe"
+    database_url: str = (
+        "postgresql+asyncpg://rosen:rosen_secret@postgres:5432/nestswipe"
+    )
 
     # MinIO
     minio_endpoint: str = "minio:9000"
@@ -35,6 +37,9 @@ class Settings(BaseSettings):
     proxy_user: str = ""
     proxy_password: str = ""
 
+    # Internal persistent Chromium service; no public port or paid scraping API.
+    seloger_browser_url: str = ""
+
     @property
     def proxy_url(self) -> str:
         if self.proxy_host and self.proxy_user and self.proxy_password:
@@ -56,11 +61,15 @@ class Settings(BaseSettings):
     def load_oauth_json(self) -> None:
         """Load Google OAuth credentials from oauth.json if not set via env."""
         path = Path(self.oauth_json_path)
-        if path.exists() and (not self.google_client_id or not self.google_client_secret):
+        if path.exists() and (
+            not self.google_client_id or not self.google_client_secret
+        ):
             data = json.loads(path.read_text())
             web = data.get("web", {})
             self.google_client_id = web.get("client_id", self.google_client_id)
-            self.google_client_secret = web.get("client_secret", self.google_client_secret)
+            self.google_client_secret = web.get(
+                "client_secret", self.google_client_secret
+            )
             redirect_uris = web.get("redirect_uris", [])
             if redirect_uris and "GOOGLE_REDIRECT_URI" not in os.environ:
                 self.google_redirect_uri = redirect_uris[0]

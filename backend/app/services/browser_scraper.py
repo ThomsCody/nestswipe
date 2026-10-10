@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass, field
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
+import httpx
 from bs4 import BeautifulSoup
 from curl_cffi.requests import AsyncSession
 
@@ -31,21 +32,59 @@ RETRY_DELAYS_SECONDS = [5.0, 15.0]
 
 # Tracking / UTM params to strip from final URLs
 STRIP_PARAMS = {
-    "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term",
-    "ci", "si", "pi", "at_medium", "at_campaign", "at_creation",
-    "at_platform", "at_variant", "at_channel", "xtor",
-    "a", "email", "md5",
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_content",
+    "utm_term",
+    "ci",
+    "si",
+    "pi",
+    "at_medium",
+    "at_campaign",
+    "at_creation",
+    "at_platform",
+    "at_variant",
+    "at_channel",
+    "xtor",
+    "a",
+    "email",
+    "md5",
 }
 
 
 # Patterns to exclude (logos, icons, tracking pixels, etc.)
 EXCLUDE_PATTERNS = [
-    "logo", "icon", "pixel", "tracking", "spacer", "blank",
-    "badge", "favicon", "sprite", "arrow", "button", "banner",
-    "footer", "header", "social", "facebook", "twitter",
-    "instagram", "linkedin", "google", "apple", "play-store",
-    "app-store", "avatar", "profile", "tampon", "contact",
-    "1x1", "transparent", "emails/images",
+    "logo",
+    "icon",
+    "pixel",
+    "tracking",
+    "spacer",
+    "blank",
+    "badge",
+    "favicon",
+    "sprite",
+    "arrow",
+    "button",
+    "banner",
+    "footer",
+    "header",
+    "social",
+    "facebook",
+    "twitter",
+    "instagram",
+    "linkedin",
+    "google",
+    "apple",
+    "play-store",
+    "app-store",
+    "avatar",
+    "profile",
+    "tampon",
+    "contact",
+    "1x1",
+    "transparent",
+    "emails/images",
 ]
 
 # SeLoger's own site (the modern seloger.com template, not the older
@@ -61,8 +100,13 @@ _SELOGER_CLASSIFICATION_RE = re.compile(
     r'classification\\?"\s*:\s*\{\\?"name\\?"\s*:\s*\\?"([A-Z_]+)\\?"'
 )
 SELOGER_PHOTO_ACCEPT_LABELS = {
-    "LIVING_ROOM", "KITCHEN", "BEDROOM", "BATHROOM",
-    "EXTERIOR_VIEW", "HALLWAY", "BUILDING_FACADE",
+    "LIVING_ROOM",
+    "KITCHEN",
+    "BEDROOM",
+    "BATHROOM",
+    "EXTERIOR_VIEW",
+    "HALLWAY",
+    "BUILDING_FACADE",
 }
 SELOGER_PHOTO_REJECT_LABELS = {"LOGO"}
 
@@ -144,6 +188,10 @@ def _clean_url(url: str) -> str:
 def _extract_source_id(url: str, source: str) -> str | None:
     """Extract the listing source ID from a resolved URL."""
     if source == "seloger":
+        # Current SeLoger URLs end in an alphanumeric ID (no .htm suffix).
+        match = re.fullmatch(r"/annonce/[^?#]+/([A-Za-z0-9]{8,})/?", urlparse(url).path)
+        if match:
+            return match.group(1)
         # URL like: https://www.seloger.com/annonces/achat/.../228288697.htm
         match = re.search(r"/(\d{6,})\.htm", url)
         if match:
@@ -204,7 +252,9 @@ def _normalize_photo_url(url: str) -> str:
     return url
 
 
-def _extract_photos_from_html(html: str, source: str) -> tuple[list[str], dict[str, str]]:
+def _extract_photos_from_html(
+    html: str, source: str
+) -> tuple[list[str], dict[str, str]]:
     """Extract property photo URLs (and any pre-approved room labels) from rendered listing page HTML."""
     soup = BeautifulSoup(html, "html.parser")
 
@@ -213,7 +263,10 @@ def _extract_photos_from_html(html: str, source: str) -> tuple[list[str], dict[s
     to_remove = []
     for tag in soup.find_all(["section", "div", "aside"], class_=True):
         classes = " ".join(tag["class"]).lower()
-        if any(kw in classes for kw in ("crosslink", "cross-sell", "similar", "recommend", "suggestion")):
+        if any(
+            kw in classes
+            for kw in ("crosslink", "cross-sell", "similar", "recommend", "suggestion")
+        ):
             to_remove.append(tag)
     for tag in to_remove:
         tag.decompose()
@@ -240,7 +293,7 @@ def _extract_photos_from_html(html: str, source: str) -> tuple[list[str], dict[s
         ):
             url = m.group(0)
             mms_seloger_urls.append(url)
-            window = text[m.end():m.end() + 300]
+            window = text[m.end() : m.end() + 300]
             label_match = _SELOGER_CLASSIFICATION_RE.search(window)
             if label_match:
                 raw_labels[url] = label_match.group(1)
@@ -288,7 +341,8 @@ def _extract_photos_from_html(html: str, source: str) -> tuple[list[str], dict[s
     # Drop images SeLoger's own classifier already confirmed are not property
     # photos (e.g. agency logos) before they ever reach dedup/download.
     candidate_urls = [
-        url for url in candidate_urls
+        url
+        for url in candidate_urls
         if raw_labels.get(url) not in SELOGER_PHOTO_REJECT_LABELS
     ]
 
@@ -334,7 +388,9 @@ def _extract_page_text(html: str) -> str | None:
     """Extract readable text from listing page HTML, stripping nav/scripts."""
     soup = BeautifulSoup(html, "html.parser")
     # Remove non-content elements
-    for tag in soup(["script", "style", "nav", "footer", "header", "noscript", "svg", "iframe"]):
+    for tag in soup(
+        ["script", "style", "nav", "footer", "header", "noscript", "svg", "iframe"]
+    ):
         tag.decompose()
     text = soup.get_text(separator="\n", strip=True)
     # Collapse multiple blank lines
@@ -344,6 +400,86 @@ def _extract_page_text(html: str) -> str | None:
     return text[:PAGE_TEXT_MAX_CHARS]
 
 
+def _is_datadome_challenge(response) -> bool:
+    """Do not mistake an interstitial (even one with status 200) for listing text."""
+    body = response.text.lower()
+    return response.headers.get("x-datadome", "").lower() == "protected" or (
+        "captcha-delivery.com" in body and "please enable js" in body
+    )
+
+
+async def _scrape_seloger_browser(url: str) -> ScrapedListing | None:
+    """One bounded rendered-page fallback, restricted to public listing URLs."""
+    if not settings.seloger_browser_url:
+        return None
+    parsed = urlparse(url)
+    if (
+        parsed.scheme != "https"
+        or parsed.netloc
+        not in {
+            "seloger.com",
+            "www.seloger.com",
+            "click.by.seloger.com",
+            "bellesdemeures.com",
+            "www.bellesdemeures.com",
+        }
+        or not (
+            parsed.hostname == "click.by.seloger.com"
+            or parsed.path.startswith(("/annonce/", "/annonces/"))
+            or re.fullmatch(r"/\d+/detail\.htm", parsed.path)
+        )
+    ):
+        return None
+
+    target = (
+        url
+        if parsed.hostname == "click.by.seloger.com"
+        else urlunparse(parsed._replace(query="", fragment=""))
+    )
+    try:
+        async with httpx.AsyncClient(timeout=80) as client:
+            response = await client.post(
+                settings.seloger_browser_url.rstrip("/") + "/render",
+                json={"url": target},
+            )
+            response.raise_for_status()
+        data = response.json()
+        html = data["html"]
+        final_url = data["url"]
+        final = urlparse(final_url)
+        if final.scheme != "https" or final.netloc not in {
+            "seloger.com",
+            "www.seloger.com",
+            "bellesdemeures.com",
+            "www.bellesdemeures.com",
+        }:
+            return None
+        if (
+            "please enable js" in html.lower()
+            and "captcha-delivery.com" in html.lower()
+        ):
+            return None
+        page_text = _extract_page_text(html)
+        if not page_text:
+            return None
+        photos, labels = _extract_photos_from_html(html, "seloger")
+        logger.info(
+            "SeLoger rendered fallback succeeded: photos=%d page_text=%d chars",
+            len(photos),
+            len(page_text),
+        )
+        return ScrapedListing(
+            resolved_url=_clean_url(final_url),
+            source_id=_extract_source_id(final_url, "seloger"),
+            photo_urls=photos,
+            photo_labels=labels,
+            page_text=page_text,
+        )
+    except Exception as exc:
+        # Proxy exceptions may embed credentials; never log their message/traceback.
+        logger.warning("SeLoger rendered fallback failed: %s", type(exc).__name__)
+        return None
+
 
 async def scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
     """
@@ -351,6 +487,10 @@ async def scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
     follow redirects, capture the final permanent URL and scrape photos.
     """
     result = ScrapedListing()
+    fallback_needed = False
+    http_status = None
+    failure_reason = "empty_page"
+    error_type = None
 
     use_proxy = source in PROXY_SOURCES and settings.proxy_url
     proxy = settings.proxy_url if use_proxy else None
@@ -370,7 +510,9 @@ async def scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
                     )
                     logger.debug("Warm-up request to %s completed", warmup_url)
                 except Exception:
-                    logger.debug("Warm-up request to %s failed (non-critical)", warmup_url)
+                    logger.debug(
+                        "Warm-up request to %s failed (non-critical)", warmup_url
+                    )
 
             # Fetch the actual listing page (follows redirects automatically)
             listing_headers = HEADERS.copy()
@@ -385,6 +527,14 @@ async def scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
                     timeout=REQUEST_TIMEOUT,
                     allow_redirects=True,
                 )
+                # Preserve the resolved destination if a later retry has a transport error.
+                http_status = resp.status_code
+                result.resolved_url = _clean_url(str(resp.url))
+                result.source_id = _extract_source_id(str(resp.url), source)
+                if source == "seloger" and _is_datadome_challenge(resp):
+                    fallback_needed = True
+                    failure_reason = "anti_bot_challenge"
+                    break
                 if resp.status_code not in THROTTLE_STATUS_CODES:
                     break
                 if attempt == len(RETRY_DELAYS_SECONDS):
@@ -392,7 +542,11 @@ async def scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
                 delay = RETRY_DELAYS_SECONDS[attempt]
                 logger.warning(
                     "Possible rate-limiting (status %d) for %s, retrying in %.0fs (attempt %d/%d)",
-                    resp.status_code, tracking_url, delay, attempt + 1, len(RETRY_DELAYS_SECONDS),
+                    resp.status_code,
+                    tracking_url,
+                    delay,
+                    attempt + 1,
+                    len(RETRY_DELAYS_SECONDS),
                 )
                 await asyncio.sleep(delay)
 
@@ -404,35 +558,62 @@ async def scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
             result.resolved_url = _clean_url(final_url)
             result.source_id = _extract_source_id(final_url, source)
 
-            if resp.status_code == 200:
-                result.photo_urls, result.photo_labels = _extract_photos_from_html(resp.text, source)
+            if resp.status_code == 200 and not _is_datadome_challenge(resp):
+                result.photo_urls, result.photo_labels = _extract_photos_from_html(
+                    resp.text, source
+                )
                 result.page_text = _extract_page_text(resp.text)
                 logger.info(
                     "Scraped listing: url=%s source_id=%s photos=%d page_text=%d chars",
-                    result.resolved_url, result.source_id, len(result.photo_urls),
+                    result.resolved_url,
+                    result.source_id,
+                    len(result.photo_urls),
                     len(result.page_text) if result.page_text else 0,
                 )
             else:
+                if not fallback_needed:
+                    failure_reason = "http_error"
                 logger.warning(
                     "Page load failed (status %d) for %s",
-                    resp.status_code, tracking_url,
-                )
-                # TEMPORARY diagnostics: figure out whether SeLoger's block is a
-                # JS-challenge interstitial (DataDome headers/cookie present) vs
-                # a hard IP-level block (plain WAF page, no DataDome markers).
-                datadome_headers = {
-                    k: v for k, v in resp.headers.items() if "datadome" in k.lower()
-                }
-                logger.warning(
-                    "Diag for %s: final_url=%s datadome_headers=%s set_cookie=%s body_snippet=%r",
+                    resp.status_code,
                     tracking_url,
-                    final_url,
-                    datadome_headers,
-                    resp.headers.get("set-cookie", ""),
-                    resp.text[:500] if resp.text else "",
+                )
+                logger.warning(
+                    "Scrape blocked: host=%s status=%d datadome_challenge=%s",
+                    urlparse(final_url).hostname,
+                    resp.status_code,
+                    _is_datadome_challenge(resp),
                 )
 
-    except Exception:
-        logger.exception("Failed to scrape listing from %s", tracking_url)
+    except Exception as exc:
+        fallback_needed = True
+        failure_reason = "request_error"
+        error_type = type(exc).__name__
+        logger.warning(
+            "Listing request failed: source=%s error_type=%s", source, error_type
+        )
+
+    if source == "seloger" and fallback_needed:
+        recovered = await _scrape_seloger_browser(result.resolved_url or tracking_url)
+        if recovered:
+            return recovered
+
+    if not result.page_text:
+        # Alert only on the final outcome: a challenge recovered by Chromium is
+        # not a failed import. Removed listings are expected and separately logged.
+        unavailable = http_status in {404, 410} and error_type is None
+        event = "listing_unavailable" if unavailable else "listing_access_failed"
+        log = logger.warning if unavailable else logger.error
+        log(
+            event,
+            extra={
+                "event": event,
+                "listing_source": source,
+                "listing_host": urlparse(result.resolved_url or tracking_url).hostname,
+                "reason": failure_reason,
+                "http_status": http_status,
+                "error_type": error_type,
+            },
+        )
 
     return result

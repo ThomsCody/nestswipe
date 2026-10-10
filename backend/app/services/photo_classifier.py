@@ -11,15 +11,21 @@ logger = logging.getLogger(__name__)
 BATCH_SIZE = 5
 
 SYSTEM_PROMPT = """You are a photo classifier for real estate listings.
-For each image, determine if it shows the actual property being sold.
+For each image, determine if it shows the actual property being sold, either
+as a photograph or a floor plan.
 
 Return a JSON object with a single key "keep" containing an array of booleans,
 one per image in the same order they were provided.
 
 Answer true for: property interior rooms, exterior/facade, balcony, terrace,
-view from the property, building entrance, garden, parking space, common areas.
+view from the property, building entrance, garden, parking space, common areas,
+and floor plans showing the property's room layout (including 2D or 3D plans).
 
-Answer false for: real estate agent portraits, agency logos, maps, floor plans,
+Keep property photographs and floor plans even if they have overlaid watermarks,
+agency logos, copyright text, or contact details. Judge the underlying property
+image, not the overlay. Judge each image independently.
+
+Answer false for: real estate agent portraits, standalone agency logos, location maps,
 neighborhood overview photos, energy performance labels, promotional banners,
 QR codes, contact cards, watermark-only images."""
 
@@ -38,10 +44,12 @@ async def _classify_batch(
         {"type": "text", "text": f"Classify these {len(batch)} images:"}
     ]
     for img_bytes, _, _ in batch:
-        content.append({
-            "type": "image_url",
-            "image_url": {"url": _image_to_data_url(img_bytes), "detail": "low"},
-        })
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": _image_to_data_url(img_bytes), "detail": "low"},
+            }
+        )
 
     response = await client.chat.completions.create(
         model="gpt-4o-mini",
@@ -65,7 +73,8 @@ async def _classify_batch(
     if len(results) != len(batch):
         logger.warning(
             "Classifier returned %d results for %d photos, keeping all",
-            len(results), len(batch),
+            len(results),
+            len(batch),
         )
         return [True] * len(batch), input_tokens, output_tokens
 
@@ -104,6 +113,11 @@ async def classify_photos(
     filtered = [photo for photo, keep in zip(photos, keep_flags) if keep]
     removed = len(photos) - len(filtered)
     if removed:
-        logger.info("Photo classifier: kept %d/%d photos (removed %d)", len(filtered), len(photos), removed)
+        logger.info(
+            "Photo classifier: kept %d/%d photos (removed %d)",
+            len(filtered),
+            len(photos),
+            removed,
+        )
 
     return filtered, total_input, total_output

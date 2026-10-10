@@ -33,6 +33,22 @@ jobs:
           MINIO_ROOT_PASSWORD: "test"
           DD_TRACE_ENABLED: "false"
 
+  browser-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: browser/requirements.txt
+      - name: Install browser service dependencies
+        run: pip install -r requirements.txt
+        working-directory: browser
+      - name: Test browser recovery and URL restrictions
+        run: python -m unittest test_service -v
+        working-directory: browser
+
   frontend-tests:
     runs-on: ubuntu-latest
     steps:

@@ -42,6 +42,7 @@ Thumbs.db
 # Docker volumes
 pgdata/
 minio_data/
+browser-profile/
 
 # Alembic
 backend/alembic/versions/__pycache__/

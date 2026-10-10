@@ -1,0 +1,179 @@
+"""Internal, single-browser SeLoger renderer with persistent cookies and French egress."""
+
+import asyncio
+import logging
+import os
+import re
+import uuid
+from contextlib import asynccontextmanager, suppress
+from pathlib import Path
+from urllib.parse import urlsplit
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from playwright.async_api import async_playwright
+
+logger = logging.getLogger(__name__)
+ALLOWED_HOSTS = {
+    "seloger.com",
+    "www.seloger.com",
+    "click.by.seloger.com",
+    "bellesdemeures.com",
+    "www.bellesdemeures.com",
+}
+MAX_HTML_BYTES = 5 * 1024 * 1024
+READY = """() => document.body && document.body.innerText.length > 500
+    && !document.querySelector('iframe[src*="captcha-delivery.com"]')"""
+
+
+def allowed_url(url: str) -> bool:
+    try:
+        parsed = urlsplit(url)
+        return (
+            parsed.scheme == "https"
+            and parsed.hostname in ALLOWED_HOSTS
+            and parsed.port in (None, 443)
+            and parsed.username is None
+            and parsed.password is None
+        )
+    except ValueError:
+        return False
+
+
+def proxy_config(profile: Path) -> dict | None:
+    username = os.environ.get("PROXY_USER", "")
+    password = os.environ.get("PROXY_PASSWORD", "")
+    if not username or not password:
+        return None
+    # Preserve the same Decodo session across browser/process restarts. Once a
+    # provider session expires, Chromium can clear the device check again.
+    session_file = profile / "proxy-session"
+    session = session_file.read_text().strip() if session_file.exists() else ""
+    if not re.fullmatch(r"[a-f0-9]{16}", session):
+        session = uuid.uuid4().hex[:16]
+        session_file.write_text(session)
+    return {
+        "server": "http://gate.decodo.com:7000",
+        "username": f"user-{username.removeprefix('user-')}-country-fr-session-{session}",
+        "password": password,
+    }
+
+
+class Renderer:
+    def __init__(self):
+        self.lock = asyncio.Lock()
+        self.playwright = None
+        self.context = None
+
+    async def close(self):
+        if self.context:
+            with suppress(Exception):
+                await self.context.close()
+            self.context = None
+        if self.playwright:
+            with suppress(Exception):
+                await self.playwright.stop()
+            self.playwright = None
+
+    async def start(self):
+        if self.context:
+            return
+        profile = Path(os.environ.get("PROFILE_DIR", "/data/profile"))
+        profile.mkdir(parents=True, exist_ok=True)
+        self.playwright = await async_playwright().start()
+        self.context = await self.playwright.chromium.launch_persistent_context(
+            str(profile / "chromium"),
+            headless=False,
+            proxy=proxy_config(profile),
+            locale="fr-FR",
+            timezone_id="Europe/Paris",
+            viewport={"width": 1440, "height": 900},
+            args=["--disable-blink-features=AutomationControlled"],
+            ignore_default_args=["--enable-automation"],
+        )
+
+    async def render(self, url: str) -> dict:
+        if not allowed_url(url):
+            raise HTTPException(400, "Unsupported listing URL")
+        try:
+            # Includes time queued behind another scrape, not just navigation.
+            async with asyncio.timeout(75):
+                async with self.lock:
+                    try:
+                        await self.start()
+                        return await self._render_page(url)
+                    except BaseException:
+                        # A crashed/disconnected browser must not poison later requests.
+                        await self.close()
+                        raise
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning("Browser rendering failed: %s", type(exc).__name__)
+            raise HTTPException(502, "Listing could not be rendered") from None
+
+    async def _render_page(self, url: str) -> dict:
+        page = await self.context.new_page()
+        status = None
+
+        def received(response):
+            nonlocal status
+            if (
+                response.request.is_navigation_request()
+                and response.frame == page.main_frame
+            ):
+                status = response.status
+
+        async def route_request(route):
+            request = route.request
+            if (
+                request.is_navigation_request()
+                and request.frame == page.main_frame
+                and not allowed_url(request.url)
+            ):
+                await route.abort()
+            else:
+                await route.continue_()
+
+        page.on("response", received)
+        await page.route("**/*", route_request)
+        try:
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            # The initial navigation may be 403. Wait for the automatic device
+            # check to reload the main document; a persistent CAPTCHA times out.
+            await page.wait_for_function(READY, timeout=35000)
+            if status != 200 or not allowed_url(page.url):
+                raise HTTPException(502, "Listing remained blocked")
+            html = await page.content()
+            if len(html.encode()) > MAX_HTML_BYTES:
+                raise HTTPException(502, "Listing page is too large")
+            return {"url": page.url, "html": html}
+        finally:
+            with suppress(Exception):
+                await page.close()
+
+
+renderer = Renderer()
+
+
+@asynccontextmanager
+async def lifespan(app):
+    yield
+    await renderer.close()
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+class RenderRequest(BaseModel):
+    url: str
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
+@app.post("/render")
+async def render(request: RenderRequest):
+    return await renderer.render(request.url)

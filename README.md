@@ -138,6 +138,66 @@ When configured, the proxy is used **only** for HTML fetching on seloger.com —
 
 If these variables are not set, the scraper falls back to direct connections (seloger may return blocks/CAPTCHAs).
 
+### SeLoger JavaScript challenge fallback
+
+A residential proxy alone cannot execute SeLoger's automatic device check. When
+SeLoger scraping is challenged or has a transport error, the backend falls back
+to the internal `seloger-browser` service. It runs full Chromium under a virtual
+display, using the existing Decodo credentials with a stable French proxy session.
+It waits for the JavaScript check and reload to finish before returning HTML.
+Successful ordinary requests do not use the browser. No paid unblocking service,
+personal browser cookies, or additional subscription is required.
+
+Production Compose builds and starts this service and sets `SELOGER_BROWSER_URL`
+for the backend. The service has no published port. It only accepts HTTPS URLs
+on the supported SeLoger/Belles Demeures hosts, and refuses other top-level
+navigation destinations. Requests are serialized and bounded to 75 seconds;
+persistent challenges fail rather than being parsed as listings. TLS verification
+remains enabled. Browser cookies and the proxy session ID live in the
+`seloger_browser_profile` Docker volume, never in Git. This is an application
+profile, independent of anyone's personal browser. The service is limited to 2 GB
+of memory and one CPU, and recreates Chromium after browser errors.
+
+For local development, `SELOGER_BROWSER_URL` can point to a separately started
+renderer; leaving it blank disables the fallback. `browser/requirements.txt`
+contains the dependencies for the isolated browser container.
+
+After deployment, validate a previously blocked listing through the production
+importer before replaying failed emails. Failed email attempts are
+already marked processed, so they do not automatically retry after a deployment.
+Use `backend/scripts/reprocess_emails.py` with `--source seloger`, a bounded
+`--since`/`--until` window, or selected `--email-ids` once validation succeeds.
+
+## Listing-access alert in Datadog
+
+The scraper emits one structured `listing_access_failed` error only after all
+configured attempts and the SeLoger browser fallback fail. It includes the
+provider (`listing_source`), hostname, reason, HTTP status, and exception type;
+the event excludes listing URLs, tracking parameters, and exception messages.
+Successful browser recovery does not emit this error. HTTP 404/410 removals use
+`listing_unavailable` instead. This covers both email and manual imports for all
+providers; photo filtering and LLM extraction failures are outside this alert.
+
+`deploy/datadog/listing-access-monitor.json` alerts on any final failure in a
+15-minute window and reminds the recipient hourly while failures continue.
+No-data is quiet: the monitor observes actual imports, not scheduled probes.
+Recovery means no failures were observed during the window, not that every
+provider was actively checked. Logs marked `monitor_test:true` are excluded.
+
+Use credentials for the personal **ThomasDogFooding** organization, not a work
+organization. With `DD_API_KEY`, `DD_APP_KEY`, and `DD_SITE` injected into the
+environment (never committed), validate and then create/update the monitor:
+
+```bash
+python deploy/datadog/publish_monitor.py --notify @your-email@example.com
+python deploy/datadog/publish_monitor.py --notify @your-email@example.com --apply
+```
+
+When using `dd-auth`, select the personal organization's UUID explicitly with
+`--org-uuid <uuid> --site datadoghq.com -- <command>`; its default organization
+may be a work account. The publisher only updates a uniquely named monitor with
+the `managed_by:nestswipe` tag and verifies the saved query and recipient.
+
 ## Email notifications (optional)
 
 When a household member is @mentioned in a comment, they receive an email notification via SendGrid. To enable this:
