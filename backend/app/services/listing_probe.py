@@ -17,6 +17,14 @@ PROBE_TIMEOUT_SECONDS = 240
 MAX_CANDIDATES = 3
 
 
+def _matches_source(url: str, hostname: str | None, source: str) -> bool:
+    # Several agencies share this email redirect service. The listing's stored
+    # source, not ap.immo's default URL classification, identifies the agency.
+    if hostname == "ap.immo" and source in {"barnes", "junot", "consultantsimmobilier"}:
+        return True
+    return detect_source_from_url(url) == source
+
+
 async def _candidate_urls() -> dict[str, list[str]]:
     candidates = {}
     async with async_session() as db:
@@ -39,7 +47,7 @@ async def _candidate_urls() -> dict[str, list[str]]:
                     and not parsed.username
                     and not parsed.password
                     and port in (None, 443)
-                    and detect_source_from_url(url) == source
+                    and _matches_source(url, parsed.hostname, source)
                     and url not in urls
                 ):
                     urls.append(url)

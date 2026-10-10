@@ -262,6 +262,19 @@ async def test_scheduler_registers_bounded_probes_only_when_enabled(
         assert jobs[0].kwargs["coalesce"] is True
 
 
+@pytest.mark.parametrize("source", ["barnes", "junot", "consultantsimmobilier"])
+async def test_shared_agency_redirects_are_eligible_probe_targets(monkeypatch, source):
+    db = MagicMock()
+    db.__aenter__ = AsyncMock(return_value=db)
+    db.__aexit__ = AsyncMock()
+    rows = MagicMock()
+    rows.scalars.return_value = ["https://ap.immo/click/test"]
+    db.execute = AsyncMock(return_value=rows)
+    monkeypatch.setattr(probe, "async_session", lambda: db)
+    monkeypatch.setattr(metrics, "SOURCES", {source})
+    assert await probe._candidate_urls() == {source: ["https://ap.immo/click/test"]}
+
+
 def test_monitor_queries_and_missing_data_contract():
     root = Path(__file__).resolve().parents[2] / "deploy" / "datadog"
     failure = json.loads((root / "listing-access-monitor.json").read_text())
@@ -273,7 +286,7 @@ def test_monitor_queries_and_missing_data_contract():
     )
     assert (
         healthy["query"]
-        == "min(last_20m):min:nestswipe.listing_probe.healthy{service:nestswipe-backend,env:prod} by {listing_source}.fill(null) < 1"
+        == "max(last_20m):min:nestswipe.listing_probe.healthy{service:nestswipe-backend,env:prod} by {listing_source}.fill(null) < 1"
     )
     assert (
         heartbeat["query"]

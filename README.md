@@ -193,13 +193,13 @@ minutes; batches cannot overlap. Set `LISTING_PROBES_ENABLED=false` to disable
 locally (the default); production enables it in Compose.
 
 `nestswipe.listing_probe.healthy` is 1/0 for each provider. The provider monitor
-alerts on any failure in 20 minutes or missing results. The separate
+alerts when checks have no success in 20 minutes, or results are missing. The separate
 `nestswipe.listing_probe.completed` heartbeat is emitted only after every provider
 finishes; no completed batch for 30 minutes alerts on a stopped scheduler, backend,
 database failure or missing telemetry. Both successful and failed batches emit
 completion. Alerts remind hourly. Recovery of the import counter means a quiet
-15-minute window; probe recovery requires healthy results and previous failures
-aging out. These checks verify page access, not semantic extraction, photos or
+15-minute window; probe recovery requires a successful check. These checks verify
+page access, not semantic extraction, photos or
 the Gmail polling job. Unknown HTTP-200 interstitials can still need scraper fixes.
 
 Use credentials for the personal **ThomasDogFooding** organization, not a work
