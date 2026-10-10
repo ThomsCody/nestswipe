@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     # Email polling
     email_poll_interval_minutes: int = 5
 
+    # Periodic access probes run only in production. No LLM or listing writes.
+    listing_probes_enabled: bool = False
+
     # OAuth JSON path
     oauth_json_path: str = "/app/oauth.json"
 

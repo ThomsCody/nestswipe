@@ -9,6 +9,7 @@ from app.database import async_session
 from app.models.user import User
 from app.services.email_processor import process_emails_for_user
 from app.services.photo_cleanup import cleanup_stale_photos
+from app.services.listing_probe import PROBE_INTERVAL_MINUTES, run_listing_probes
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,9 @@ async def poll_emails_job():
                 try:
                     count = await process_emails_for_user(user, db)
                     if count > 0:
-                        logger.info("Processed %d emails for user %s", count, user.email)
+                        logger.info(
+                            "Processed %d emails for user %s", count, user.email
+                        )
                 except Exception:
                     logger.exception("Failed to process emails for user %s", user.id)
     finally:
@@ -90,14 +93,31 @@ async def start_scheduler():
         id="photo_cleanup",
         replace_existing=True,
     )
+    if settings.listing_probes_enabled:
+        scheduler.add_job(
+            run_listing_probes,
+            "interval",
+            minutes=PROBE_INTERVAL_MINUTES,
+            next_run_time=now + timedelta(seconds=30),
+            id="listing_probes",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
     scheduler.start()
 
     job = scheduler.get_job("poll_emails")
-    next_run_str = job.next_run_time.strftime("%Y-%m-%d %H:%M:%S") if job and job.next_run_time else "unknown"
+    next_run_str = (
+        job.next_run_time.strftime("%Y-%m-%d %H:%M:%S")
+        if job and job.next_run_time
+        else "unknown"
+    )
     last_poll_str = last_poll.strftime("%Y-%m-%d %H:%M:%S") if last_poll else "never"
     logger.info(
         "Scheduler started, polling every %d minutes (last poll: %s, next run: %s)",
-        settings.email_poll_interval_minutes, last_poll_str, next_run_str,
+        settings.email_poll_interval_minutes,
+        last_poll_str,
+        next_run_str,
     )
 
 

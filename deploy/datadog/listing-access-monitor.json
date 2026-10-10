@@ -1,18 +1,16 @@
 {
-  "name": "Nestswipe: listing access failed",
-  "type": "log alert",
-  "query": "logs(\"service:nestswipe-backend env:prod @event:listing_access_failed -@monitor_test:true\").index(\"*\").rollup(\"count\").last(\"15m\") > 0",
-  "message": "{{#is_alert}}Nestswipe could not read a listing after its configured retries and browser fallback. Open the matching logs and check listing_source, listing_host, reason, http_status, and error_type. Check proxy connectivity and the seloger-browser service for SeLoger challenges.{{/is_alert}}\n\n{{#is_recovery}}No final listing-access failures were observed in the last 15 minutes. This is a quiet window, not an active probe of each provider.{{/is_recovery}}\n\nCovers email and manual imports from all listing sources. Expected HTTP 404/410 removals and successfully recovered browser challenges do not trigger this monitor. Photo filtering and LLM extraction errors are separate from listing access.\n\nAfter fixing an outage, replay affected emails with backend/scripts/reprocess_emails.py using a bounded time window or specific email IDs.",
+  "name": "Nestswipe: listing access failures (metrics)",
+  "type": "query alert",
+  "query": "sum(last_15m):sum:nestswipe.listing_access.failure{service:nestswipe-backend,env:prod,purpose:import}.as_count() > 0",
+  "message": "{{#is_alert}}A real listing import failed after retries and browser fallback. The dedicated failure counter triggered this alert; logs are only for diagnosis. Inspect listing_source, reason and http_status in backend logs and check the proxy and seloger-browser service.{{/is_alert}}\n\n{{#is_recovery}}No final import access failures were recorded in the last 15 minutes. Consult the scheduled probe monitors for active provider health.{{/is_recovery}}\n\nCovers email and manual imports for all providers. HTTP 404/410 removals and recovered browser challenges are excluded. Photo and LLM failures are outside this alert. After fixing an outage, replay affected emails with backend/scripts/reprocess_emails.py using a bounded time window or specific email IDs.",
   "tags": ["service:nestswipe-backend", "env:prod", "application:nestswipe", "managed_by:nestswipe"],
   "priority": 3,
   "options": {
     "thresholds": {"critical": 0},
     "include_tags": true,
-    "notify_no_data": false,
     "on_missing_data": "resolve",
     "require_full_window": false,
     "renotify_interval": 60,
-    "renotify_statuses": ["alert"],
-    "enable_logs_sample": true
+    "renotify_statuses": ["alert"]
   }
 }

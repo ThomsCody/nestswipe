@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 from curl_cffi.requests import AsyncSession
 
 from app.config import settings
+from app.services import listing_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +175,7 @@ class ScrapedListing:
     # Absence from this dict means "no confident signal, needs vision".
     photo_labels: dict[str, str] = field(default_factory=dict)
     page_text: str | None = None
+    unavailable: bool = False
 
 
 def _clean_url(url: str) -> str:
@@ -481,7 +483,28 @@ async def _scrape_seloger_browser(url: str) -> ScrapedListing | None:
         return None
 
 
-async def scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
+async def scrape_listing(
+    tracking_url: str, source: str, *, purpose: str = "import"
+) -> ScrapedListing:
+    """Measure the final outcome once, including retries and browser recovery."""
+    listing_metrics.scrape_attempt(source, purpose)
+    try:
+        result = await _scrape_listing(tracking_url, source)
+    except Exception:
+        listing_metrics.scrape_outcome(source, purpose, "failure")
+        raise
+    outcome = (
+        "success"
+        if result.page_text
+        else "unavailable"
+        if result.unavailable
+        else "failure"
+    )
+    listing_metrics.scrape_outcome(source, purpose, outcome)
+    return result
+
+
+async def _scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
     """
     Fetch a listing URL using curl-impersonate (Chrome TLS fingerprint),
     follow redirects, capture the final permanent URL and scrape photos.
@@ -602,6 +625,7 @@ async def scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
         # Alert only on the final outcome: a challenge recovered by Chromium is
         # not a failed import. Removed listings are expected and separately logged.
         unavailable = http_status in {404, 410} and error_type is None
+        result.unavailable = unavailable
         event = "listing_unavailable" if unavailable else "listing_access_failed"
         log = logger.warning if unavailable else logger.error
         log(

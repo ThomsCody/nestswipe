@@ -168,35 +168,56 @@ already marked processed, so they do not automatically retry after a deployment.
 Use `backend/scripts/reprocess_emails.py` with `--source seloger`, a bounded
 `--since`/`--until` window, or selected `--email-ids` once validation succeeds.
 
-## Listing-access alert in Datadog
+## Listing-access monitoring in Datadog
 
-The scraper emits one structured `listing_access_failed` error only after all
-configured attempts and the SeLoger browser fallback fail. It includes the
-provider (`listing_source`), hostname, reason, HTTP status, and exception type;
-the event excludes listing URLs, tracking parameters, and exception messages.
-Successful browser recovery does not emit this error. HTTP 404/410 removals use
-`listing_unavailable` instead. This covers both email and manual imports for all
-providers; photo filtering and LLM extraction failures are outside this alert.
+Alerts use dedicated DogStatsD metrics through the existing Agent, independently
+of log wording, collection, indexing or retention. `listing_metrics.py` defines
+the contract; `test_listing_monitoring.py` protects names, tags, final outcomes,
+the UDP wire format, scheduling and monitor queries. No application key is
+needed in production. No URLs, listing IDs or user identifiers are metric tags.
 
-`deploy/datadog/listing-access-monitor.json` alerts on any final failure in a
-15-minute window and reminds the recipient hourly while failures continue.
-No-data is quiet: the monitor observes actual imports, not scheduled probes.
-Recovery means no failures were observed during the window, not that every
-provider was actively checked. Logs marked `monitor_test:true` are excluded.
+The scraper emits `nestswipe.listing_access.attempts` and final `success`,
+`failure`, `unavailable` counters, tagged by `listing_source` and
+`purpose:import|probe`. Browser recovery counts as one success, not a failure.
+HTTP 404/410 removals are separate. Real email/manual import failures trigger
+the metric alert over a 15-minute window; it stays quiet during idle periods.
+Structured `listing_access_failed` logs remain available for diagnosis only.
+
+Production also runs a bounded check every 10 minutes for SeLoger, PAP,
+Consultants Immobilier, Barnes, Junot and Leboncoin. Each uses the actual scraper
+(including proxy/browser fallback) on recent database listing URLs; removed
+adverts try up to three distinct candidates. No usable candidate is an explicit
+failed check, not a claim that the provider is down. Checks do not call the LLM,
+download photos, import or modify listings. Each provider is limited to four
+minutes; batches cannot overlap. Set `LISTING_PROBES_ENABLED=false` to disable
+locally (the default); production enables it in Compose.
+
+`nestswipe.listing_probe.healthy` is 1/0 for each provider. The provider monitor
+alerts on any failure in 20 minutes or missing results. The separate
+`nestswipe.listing_probe.completed` heartbeat is emitted only after every provider
+finishes; no completed batch for 30 minutes alerts on a stopped scheduler, backend,
+database failure or missing telemetry. Both successful and failed batches emit
+completion. Alerts remind hourly. Recovery of the import counter means a quiet
+15-minute window; probe recovery requires healthy results and previous failures
+aging out. These checks verify page access, not semantic extraction, photos or
+the Gmail polling job. Unknown HTTP-200 interstitials can still need scraper fixes.
 
 Use credentials for the personal **ThomasDogFooding** organization, not a work
 organization. With `DD_API_KEY`, `DD_APP_KEY`, and `DD_SITE` injected into the
 environment (never committed), validate and then create/update the monitor:
 
 ```bash
-python deploy/datadog/publish_monitor.py --notify @your-email@example.com
-python deploy/datadog/publish_monitor.py --notify @your-email@example.com --apply
+python deploy/datadog/publish_monitor.py --org-uuid <personal-org-uuid> --notify @your-email@example.com
+python deploy/datadog/publish_monitor.py --org-uuid <personal-org-uuid> --notify @your-email@example.com --apply
 ```
 
 When using `dd-auth`, select the personal organization's UUID explicitly with
 `--org-uuid <uuid> --site datadoghq.com -- <command>`; its default organization
-may be a work account. The publisher only updates a uniquely named monitor with
-the `managed_by:nestswipe` tag and verifies the saved query and recipient.
+may be a work account. The publisher verifies the credential's organization,
+validates all three definitions before applying, only updates uniquely named
+monitors with `managed_by:nestswipe`, and verifies saved queries, options and
+recipients. For migration, keep the old log alert until metric ingestion and new
+monitors are verified, then retire it to avoid duplicate notifications.
 
 ## Email notifications (optional)
 

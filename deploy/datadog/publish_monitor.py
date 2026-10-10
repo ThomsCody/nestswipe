@@ -1,4 +1,4 @@
-"""Validate or upsert the Nestswipe monitor in an explicitly selected Datadog org."""
+"""Validate or upsert Nestswipe monitors in an explicitly selected Datadog org."""
 
 import argparse
 import json
@@ -11,6 +11,9 @@ from urllib.request import Request, urlopen
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--org-uuid", required=True, help="Expected Datadog organization UUID"
+    )
     parser.add_argument(
         "--notify",
         required=True,
@@ -57,14 +60,24 @@ def main():
                 f"Datadog {method} {path}: HTTP {exc.code}: {exc.read().decode()}"
             ) from None
 
-    payload = json.loads(
-        Path(__file__).with_name("listing-access-monitor.json").read_text()
-    )
-    payload["message"] += "\n\n" + args.notify
-    request("POST", "/api/v1/monitor/validate", payload)
+    identity = request("GET", "/api/v2/current_user")
+    if identity["data"]["relationships"]["org"]["data"]["id"] != args.org_uuid:
+        raise SystemExit("Credentials belong to a different Datadog organization.")
+    payloads = [
+        json.loads(path.read_text())
+        for path in sorted(Path(__file__).parent.glob("*-monitor.json"))
+    ]
+    for payload in payloads:
+        payload["message"] += "\n\n" + args.notify
+        request("POST", "/api/v1/monitor/validate", payload)
     if not args.apply:
-        print("Monitor configuration validated; no monitor was changed.")
+        print("All monitor configurations validated; no monitor was changed.")
         return
+    for payload in payloads:
+        upsert_monitor(request, payload, args.notify)
+
+
+def upsert_monitor(request, payload, notify):
     matches = [
         monitor
         for monitor in request(
@@ -85,7 +98,15 @@ def main():
     else:
         result = request("POST", "/api/v1/monitor", payload)
     saved = request("GET", f"/api/v1/monitor/{result['id']}")
-    if saved["query"] != payload["query"] or args.notify not in saved["message"]:
+    if (
+        saved["query"] != payload["query"]
+        or saved["type"] != payload["type"]
+        or notify not in saved["message"]
+        or any(
+            saved["options"].get(key) != value
+            for key, value in payload["options"].items()
+        )
+    ):
         raise SystemExit("Saved monitor does not match the requested configuration.")
     print(
         json.dumps(
