@@ -410,28 +410,81 @@ def _is_datadome_challenge(response) -> bool:
     )
 
 
-async def _scrape_seloger_browser(url: str) -> ScrapedListing | None:
-    """One bounded rendered-page fallback, restricted to public listing URLs."""
-    if not settings.seloger_browser_url:
-        return None
-    parsed = urlparse(url)
-    if (
-        parsed.scheme != "https"
-        or parsed.netloc
-        not in {
-            "seloger.com",
-            "www.seloger.com",
-            "click.by.seloger.com",
-            "bellesdemeures.com",
-            "www.bellesdemeures.com",
-        }
-        or not (
-            parsed.hostname == "click.by.seloger.com"
-            or parsed.path.startswith(("/annonce/", "/annonces/"))
-            or re.fullmatch(r"/\d+/detail\.htm", parsed.path)
+BROWSER_HOSTS = {
+    "seloger": {
+        "seloger.com",
+        "www.seloger.com",
+        "click.by.seloger.com",
+        "bellesdemeures.com",
+        "www.bellesdemeures.com",
+    },
+    "pap": {"pap.fr", "www.pap.fr"},
+    "leboncoin": {"leboncoin.fr", "www.leboncoin.fr"},
+}
+
+
+def _is_challenge_html(html: str) -> bool:
+    body = html.lower()
+    return (
+        (
+            "captcha-delivery.com" in body
+            and (
+                "please enable js" in body
+                or bool(re.search(r"<iframe[^>]+captcha-delivery\.com", body))
+            )
         )
+        or bool(re.search(r"<title[^>]*>\s*just a moment", body))
+        or 'id="challenge-form"' in body
+    )
+
+
+def _is_access_challenge(response) -> bool:
+    return (
+        _is_datadome_challenge(response)
+        or response.headers.get("cf-mitigated", "").lower() == "challenge"
+        or _is_challenge_html(response.text)
+    )
+
+
+def _browser_listing_url(url: str, source: str, *, tracking: bool = False) -> bool:
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme != "https" or parsed.netloc not in BROWSER_HOSTS.get(
+            source, set()
+        ):
+            return False
+        if parsed.hostname == "click.by.seloger.com":
+            return tracking
+        if source == "seloger":
+            return bool(
+                parsed.path.startswith(("/annonce/", "/annonces/"))
+                or re.fullmatch(r"/\d+/detail\.htm", parsed.path)
+            )
+        if source == "pap":
+            return bool(re.fullmatch(r"/annonces?/[^/]+-[rg]\d+/?", parsed.path))
+        if source == "leboncoin":
+            return bool(
+                re.fullmatch(
+                    r"/(?:ad/ventes_immobilieres/\d+/?|vi/\d+\.htm)", parsed.path
+                )
+            )
+    except ValueError:
+        pass
+    return False
+
+
+async def _scrape_seloger_browser(url: str) -> ScrapedListing | None:
+    return await _scrape_browser(url, "seloger")
+
+
+async def _scrape_browser(url: str, source: str) -> ScrapedListing | None:
+    """One bounded rendered-page fallback, restricted to public listing URLs."""
+    # Keep the deployed endpoint setting compatible while sharing the renderer.
+    if not settings.seloger_browser_url or not _browser_listing_url(
+        url, source, tracking=True
     ):
         return None
+    parsed = urlparse(url)
 
     target = (
         url
@@ -448,38 +501,32 @@ async def _scrape_seloger_browser(url: str) -> ScrapedListing | None:
         data = response.json()
         html = data["html"]
         final_url = data["url"]
-        final = urlparse(final_url)
-        if final.scheme != "https" or final.netloc not in {
-            "seloger.com",
-            "www.seloger.com",
-            "bellesdemeures.com",
-            "www.bellesdemeures.com",
-        }:
-            return None
-        if (
-            "please enable js" in html.lower()
-            and "captcha-delivery.com" in html.lower()
-        ):
+        if not _browser_listing_url(final_url, source) or _is_challenge_html(html):
             return None
         page_text = _extract_page_text(html)
         if not page_text:
             return None
-        photos, labels = _extract_photos_from_html(html, "seloger")
+        photos, labels = _extract_photos_from_html(html, source)
         logger.info(
-            "SeLoger rendered fallback succeeded: photos=%d page_text=%d chars",
+            "Rendered fallback succeeded: source=%s photos=%d page_text=%d chars",
+            source,
             len(photos),
             len(page_text),
         )
         return ScrapedListing(
             resolved_url=_clean_url(final_url),
-            source_id=_extract_source_id(final_url, "seloger"),
+            source_id=_extract_source_id(final_url, source),
             photo_urls=photos,
             photo_labels=labels,
             page_text=page_text,
         )
     except Exception as exc:
         # Proxy exceptions may embed credentials; never log their message/traceback.
-        logger.warning("SeLoger rendered fallback failed: %s", type(exc).__name__)
+        logger.warning(
+            "Rendered fallback failed: source=%s error_type=%s",
+            source,
+            type(exc).__name__,
+        )
         return None
 
 
@@ -554,7 +601,7 @@ async def _scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
                 http_status = resp.status_code
                 result.resolved_url = _clean_url(str(resp.url))
                 result.source_id = _extract_source_id(str(resp.url), source)
-                if source == "seloger" and _is_datadome_challenge(resp):
+                if _is_access_challenge(resp):
                     fallback_needed = True
                     failure_reason = "anti_bot_challenge"
                     break
@@ -581,7 +628,7 @@ async def _scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
             result.resolved_url = _clean_url(final_url)
             result.source_id = _extract_source_id(final_url, source)
 
-            if resp.status_code == 200 and not _is_datadome_challenge(resp):
+            if resp.status_code == 200 and not _is_access_challenge(resp):
                 result.photo_urls, result.photo_labels = _extract_photos_from_html(
                     resp.text, source
                 )
@@ -616,8 +663,16 @@ async def _scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
             "Listing request failed: source=%s error_type=%s", source, error_type
         )
 
-    if source == "seloger" and fallback_needed:
-        recovered = await _scrape_seloger_browser(result.resolved_url or tracking_url)
+    if (
+        source in BROWSER_HOSTS
+        and not result.page_text
+        and (
+            fallback_needed
+            or http_status in THROTTLE_STATUS_CODES
+            or http_status == 200
+        )
+    ):
+        recovered = await _scrape_browser(result.resolved_url or tracking_url, source)
         if recovered:
             return recovered
 

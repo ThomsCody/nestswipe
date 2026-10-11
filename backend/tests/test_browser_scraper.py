@@ -148,9 +148,7 @@ async def test_other_sources_never_use_browser(configured, renderer):
         "AsyncSession",
         return_value=session(response(), RuntimeError("HTTP2 error")),
     ):
-        await scraper.scrape_listing(
-            "https://www.leboncoin.fr/ad/ventes_immobilieres/123", "leboncoin"
-        )
+        await scraper.scrape_listing("https://www.junot.fr/annonce/test", "junot")
     renderer.post.assert_not_called()
 
 
@@ -262,3 +260,109 @@ async def test_empty_success_response_triggers_access_alert(configured, caplog):
     ]
     assert len(events) == 1
     assert events[0].reason == "empty_page"
+
+
+PROVIDER_URLS = [
+    ("pap", "https://www.pap.fr/annonces/appartement-paris-r464700536", "464700536"),
+    (
+        "leboncoin",
+        "https://www.leboncoin.fr/ad/ventes_immobilieres/3183368834",
+        "3183368834",
+    ),
+]
+
+
+@pytest.mark.parametrize("source,url,source_id", PROVIDER_URLS)
+@pytest.mark.parametrize("status", [200, 403])
+async def test_provider_challenge_recovers(
+    configured, renderer, source, url, source_id, status
+):
+    body = (
+        "<title>Just a moment...</title>"
+        if source == "pap"
+        else 'Please enable JS <script src="https://geo.captcha-delivery.com/x"></script>'
+    )
+    normal = session(response(), response(status, body, url=url))
+    renderer.post.return_value = httpx.Response(
+        200,
+        json={"url": url, "html": PAGE},
+        request=httpx.Request("POST", "http://browser/render"),
+    )
+    with patch.object(scraper, "AsyncSession", return_value=normal):
+        result = await scraper.scrape_listing(url, source)
+    assert result.source_id == source_id
+    assert result.page_text and result.photo_urls
+    assert normal.get.await_count == 2
+    renderer.post.assert_awaited_once()
+
+
+@pytest.mark.parametrize("source,url,source_id", PROVIDER_URLS)
+@pytest.mark.parametrize("status", [404, 410])
+async def test_removed_provider_listing_skips_browser(
+    configured, renderer, source, url, source_id, status
+):
+    with patch.object(
+        scraper,
+        "AsyncSession",
+        return_value=session(response(), response(status, "", url=url)),
+    ):
+        result = await scraper.scrape_listing(url, source)
+    assert result.unavailable
+    renderer.post.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "source,url",
+    [
+        ("pap", "https://www.pap.fr/"),
+        ("pap", "https://www.pap.fr/login"),
+        ("pap", "https://www.pap.fr.evil.test/annonces/test-r123"),
+        ("pap", "https://user:pass@www.pap.fr/annonces/test-r123"),
+        ("leboncoin", "https://www.leboncoin.fr/recherche?category=9"),
+        ("leboncoin", "https://www.leboncoin.fr:1234/ad/ventes_immobilieres/123"),
+        ("leboncoin", "https://www.pap.fr/annonces/test-r123"),
+    ],
+)
+async def test_provider_browser_rejects_non_listing_urls(
+    configured, renderer, source, url
+):
+    assert await scraper._scrape_browser(url, source) is None
+    renderer.post.assert_not_called()
+
+
+@pytest.mark.parametrize("source,url,source_id", PROVIDER_URLS)
+@pytest.mark.parametrize(
+    "html",
+    [
+        "<title>Just a moment...</title>" + PAGE,
+        '<iframe src="https://geo.captcha-delivery.com/captcha"></iframe>' + PAGE,
+    ],
+)
+async def test_rendered_challenge_never_becomes_listing(
+    configured, renderer, source, url, source_id, html
+):
+    renderer.post.return_value = httpx.Response(
+        200,
+        json={"url": url, "html": html},
+        request=httpx.Request("POST", "http://browser/render"),
+    )
+    assert await scraper._scrape_browser(url, source) is None
+
+
+@pytest.mark.parametrize("source,url,source_id", PROVIDER_URLS)
+async def test_provider_transport_error_recovers(
+    configured, renderer, source, url, source_id
+):
+    renderer.post.return_value = httpx.Response(
+        200,
+        json={"url": url, "html": PAGE},
+        request=httpx.Request("POST", "http://browser/render"),
+    )
+    with patch.object(
+        scraper,
+        "AsyncSession",
+        return_value=session(response(), RuntimeError("transport")),
+    ):
+        result = await scraper.scrape_listing(url, source)
+    assert result.source_id == source_id
+    renderer.post.assert_awaited_once()

@@ -1,4 +1,4 @@
-"""Internal, single-browser SeLoger renderer with persistent cookies and French egress."""
+"""Internal listing renderer with persistent direct and French proxy browsers."""
 
 import asyncio
 import logging
@@ -20,9 +20,15 @@ ALLOWED_HOSTS = {
     "click.by.seloger.com",
     "bellesdemeures.com",
     "www.bellesdemeures.com",
+    "pap.fr",
+    "www.pap.fr",
+    "leboncoin.fr",
+    "www.leboncoin.fr",
 }
 MAX_HTML_BYTES = 5 * 1024 * 1024
 READY = """() => document.body && document.body.innerText.length > 500
+    && !/just a moment/i.test(document.title)
+    && !document.querySelector('#challenge-form')
     && !document.querySelector('iframe[src*="captcha-delivery.com"]')"""
 
 
@@ -38,6 +44,18 @@ def allowed_url(url: str) -> bool:
         )
     except ValueError:
         return False
+
+
+def skip_resource(url: str, resource_type: str) -> bool:
+    """Collect photo URLs from HTML without paying to download their contents."""
+    host = urlsplit(url).hostname or ""
+    # Allow the automatic device checks to load their own resources.
+    if any(
+        host == domain or host.endswith("." + domain)
+        for domain in ("captcha-delivery.com", "challenges.cloudflare.com")
+    ):
+        return False
+    return resource_type in {"image", "media", "font"}
 
 
 def proxy_config(profile: Path) -> dict | None:
@@ -60,7 +78,8 @@ def proxy_config(profile: Path) -> dict | None:
 
 
 class Renderer:
-    def __init__(self):
+    def __init__(self, *, use_proxy: bool = True):
+        self.use_proxy = use_proxy
         self.lock = asyncio.Lock()
         self.playwright = None
         self.context = None
@@ -79,12 +98,14 @@ class Renderer:
         if self.context:
             return
         profile = Path(os.environ.get("PROFILE_DIR", "/data/profile"))
+        if not self.use_proxy:
+            profile = profile / "direct"
         profile.mkdir(parents=True, exist_ok=True)
         self.playwright = await async_playwright().start()
         self.context = await self.playwright.chromium.launch_persistent_context(
             str(profile / "chromium"),
             headless=False,
-            proxy=proxy_config(profile),
+            proxy=proxy_config(profile) if self.use_proxy else None,
             locale="fr-FR",
             timezone_id="Europe/Paris",
             viewport={"width": 1440, "height": 900},
@@ -132,6 +153,8 @@ class Renderer:
                 and not allowed_url(request.url)
             ):
                 await route.abort()
+            elif skip_resource(request.url, request.resource_type):
+                await route.abort()
             else:
                 await route.continue_()
 
@@ -154,12 +177,14 @@ class Renderer:
 
 
 renderer = Renderer()
+pap_renderer = Renderer(use_proxy=False)
 
 
 @asynccontextmanager
 async def lifespan(app):
     yield
     await renderer.close()
+    await pap_renderer.close()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -176,4 +201,11 @@ async def health():
 
 @app.post("/render")
 async def render(request: RenderRequest):
-    return await renderer.render(request.url)
+    if not allowed_url(request.url):
+        raise HTTPException(400, "Unsupported listing URL")
+    target = (
+        pap_renderer
+        if urlsplit(request.url).hostname in {"pap.fr", "www.pap.fr"}
+        else renderer
+    )
+    return await target.render(request.url)

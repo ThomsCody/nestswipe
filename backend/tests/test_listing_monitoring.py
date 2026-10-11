@@ -47,7 +47,7 @@ async def test_browser_recovery_counts_one_success_and_no_failure(client, monkey
     )
     monkeypatch.setattr(
         scraper,
-        "_scrape_seloger_browser",
+        "_scrape_browser",
         AsyncMock(return_value=scraper.ScrapedListing(page_text=PAGE)),
     )
     await scraper.scrape_listing(URL, "seloger")
@@ -66,9 +66,7 @@ async def test_failed_browser_and_unexpected_exceptions_count_once(client, monke
         "AsyncSession",
         lambda **kwargs: session(response(), RuntimeError("private")),
     )
-    monkeypatch.setattr(
-        scraper, "_scrape_seloger_browser", AsyncMock(return_value=None)
-    )
+    monkeypatch.setattr(scraper, "_scrape_browser", AsyncMock(return_value=None))
     await scraper.scrape_listing(URL, "seloger")
     failure = call(
         "nestswipe.listing_access.failure",

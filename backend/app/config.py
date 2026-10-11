@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     proxy_password: str = ""
 
     # Internal persistent Chromium service; no public port or paid scraping API.
+    # Legacy env name; shared renderer handles SeLoger, PAP and Leboncoin.
     seloger_browser_url: str = ""
 
     @property

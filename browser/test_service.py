@@ -5,7 +5,14 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
-from service import Renderer, allowed_url, proxy_config
+from service import (
+    Renderer,
+    allowed_url,
+    proxy_config,
+    skip_resource,
+    render,
+    RenderRequest,
+)
 
 URL = "https://www.seloger.com/annonce/achat/paris/267446L6C3DU"
 
@@ -14,6 +21,8 @@ class UrlTests(unittest.TestCase):
     def test_known_listing_and_tracking_hosts(self):
         for url in (
             URL,
+            "https://www.pap.fr/annonces/test-r123",
+            "https://www.leboncoin.fr/ad/ventes_immobilieres/123",
             "https://click.by.seloger.com/?qs=test",
             "https://www.bellesdemeures.com/annonces/123/",
         ):
@@ -30,6 +39,18 @@ class UrlTests(unittest.TestCase):
             "https://[invalid",
         ):
             self.assertFalse(allowed_url(url))
+
+    def test_bandwidth_savings_preserve_challenges_and_scripts(self):
+        for kind in ("image", "media", "font"):
+            self.assertTrue(skip_resource("https://photos.pap.fr/photo.jpg", kind))
+            self.assertFalse(
+                skip_resource("https://geo.captcha-delivery.com/check", kind)
+            )
+            self.assertFalse(
+                skip_resource("https://challenges.cloudflare.com/check", kind)
+            )
+        self.assertFalse(skip_resource("https://www.pap.fr/app.js", "script"))
+        self.assertFalse(skip_resource("https://www.pap.fr/api/listing", "fetch"))
 
     def test_proxy_session_survives_restart(self):
         with (
@@ -81,6 +102,18 @@ class RendererTests(unittest.IsolatedAsyncioTestCase):
         renderer._render_page = render_page
         await asyncio.gather(renderer.render(URL), renderer.render(URL))
         self.assertEqual(maximum, 1)
+
+    async def test_pap_uses_separate_direct_browser(self):
+        with (
+            patch("service.pap_renderer.render", new_callable=AsyncMock) as direct,
+            patch("service.renderer.render", new_callable=AsyncMock) as proxied,
+        ):
+            url = "https://www.pap.fr/annonces/test-r123"
+            await render(RenderRequest(url=url))
+            direct.assert_awaited_once_with(url)
+            proxied.assert_not_called()
+            await render(RenderRequest(url=URL))
+            proxied.assert_awaited_once_with(URL)
 
     async def test_disallowed_url_does_not_start_browser(self):
         renderer = Renderer()
