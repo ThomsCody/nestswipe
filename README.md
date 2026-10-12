@@ -184,7 +184,9 @@ the metric alert over a 15-minute window; it stays quiet during idle periods.
 Structured `listing_access_failed` logs remain available for diagnosis only.
 
 Production also runs a bounded check every 10 minutes for SeLoger, PAP,
-Consultants Immobilier, Barnes, Junot and Leboncoin. Each uses the actual scraper
+Consultants Immobilier, Barnes and Junot. Leboncoin is excluded from scheduled
+checks and access alerts to avoid paid monitoring requests. Its import metrics
+remain available, with their original source tag. Each enabled check uses the actual scraper
 (including proxy/browser fallback) on recent database listing URLs; removed
 adverts try up to three distinct candidates. No usable candidate is an explicit
 failed check, not a claim that the provider is down. Checks do not call the LLM,
@@ -201,6 +203,10 @@ completion. Alerts remind hourly. Recovery of the import counter means a quiet
 15-minute window; probe recovery requires a successful check. These checks verify
 page access, not semantic extraction, photos or
 the Gmail polling job. Unknown HTTP-200 interstitials can still need scraper fixes.
+
+Both access monitor definitions exclude `listing_source:leboncoin`. The existing
+email extraction log monitor (267843155) also excludes `@source:leboncoin` from
+its search; preserve this exclusion if editing or replacing that monitor.
 
 Use credentials for the personal **ThomasDogFooding** organization, not a work
 organization. With `DD_API_KEY`, `DD_APP_KEY`, and `DD_SITE` injected into the

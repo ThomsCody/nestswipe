@@ -15,6 +15,9 @@ logger = logging.getLogger(__name__)
 PROBE_INTERVAL_MINUTES = 10
 PROBE_TIMEOUT_SECONDS = 240
 MAX_CANDIDATES = 3
+# Leboncoin monitoring is intentionally disabled to avoid paid proxy checks.
+# Keep its metric source tag so import metrics can still be excluded by source.
+DISABLED_PROBE_SOURCES = frozenset({"leboncoin"})
 
 
 def _matches_source(url: str, hostname: str | None, source: str) -> bool:
@@ -28,7 +31,7 @@ def _matches_source(url: str, hostname: str | None, source: str) -> bool:
 async def _candidate_urls() -> dict[str, list[str]]:
     candidates = {}
     async with async_session() as db:
-        for source in sorted(listing_metrics.SOURCES):
+        for source in sorted(listing_metrics.SOURCES - DISABLED_PROBE_SOURCES):
             rows = await db.execute(
                 select(Listing.external_url)
                 .where(Listing.source == source, Listing.external_url.isnot(None))

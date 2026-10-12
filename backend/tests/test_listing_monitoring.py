@@ -273,6 +273,20 @@ async def test_shared_agency_redirects_are_eligible_probe_targets(monkeypatch, s
     assert await probe._candidate_urls() == {source: ["https://ap.immo/click/test"]}
 
 
+async def test_disabled_provider_is_not_selected_for_paid_probes(monkeypatch):
+    db = MagicMock()
+    db.__aenter__ = AsyncMock(return_value=db)
+    db.__aexit__ = AsyncMock()
+    rows = MagicMock()
+    rows.scalars.return_value = [URL]
+    db.execute = AsyncMock(return_value=rows)
+    monkeypatch.setattr(probe, "async_session", lambda: db)
+    monkeypatch.setattr(metrics, "SOURCES", {"seloger", "leboncoin"})
+    assert await probe._candidate_urls() == {"seloger": [URL]}
+    db.execute.assert_awaited_once()
+    assert "leboncoin" in metrics.SOURCES
+
+
 def test_monitor_queries_and_missing_data_contract():
     root = Path(__file__).resolve().parents[2] / "deploy" / "datadog"
     failure = json.loads((root / "listing-access-monitor.json").read_text())
@@ -280,11 +294,11 @@ def test_monitor_queries_and_missing_data_contract():
     heartbeat = json.loads((root / "listing-probe-heartbeat-monitor.json").read_text())
     assert (
         failure["query"]
-        == "sum(last_15m):sum:nestswipe.listing_access.failure{service:nestswipe-backend,env:prod,purpose:import}.as_count() > 0"
+        == "sum(last_15m):sum:nestswipe.listing_access.failure{service:nestswipe-backend,env:prod,purpose:import,!listing_source:leboncoin}.as_count() > 0"
     )
     assert (
         healthy["query"]
-        == "max(last_20m):min:nestswipe.listing_probe.healthy{service:nestswipe-backend,env:prod} by {listing_source}.fill(null) < 1"
+        == "max(last_20m):min:nestswipe.listing_probe.healthy{service:nestswipe-backend,env:prod,!listing_source:leboncoin} by {listing_source}.fill(null) < 1"
     )
     assert (
         heartbeat["query"]

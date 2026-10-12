@@ -1,8 +1,8 @@
 {
   "name": "Nestswipe: listing access failures (metrics)",
   "type": "query alert",
-  "query": "sum(last_15m):sum:nestswipe.listing_access.failure{service:nestswipe-backend,env:prod,purpose:import}.as_count() > 0",
-  "message": "{{#is_alert}}A real listing import failed after retries and browser fallback. The dedicated failure counter triggered this alert; logs are only for diagnosis. Inspect listing_source, reason and http_status in backend logs and check the proxy and seloger-browser service.{{/is_alert}}\n\n{{#is_recovery}}No final import access failures were recorded in the last 15 minutes. Consult the scheduled probe monitors for active provider health.{{/is_recovery}}\n\nCovers email and manual imports for all providers. HTTP 404/410 removals and recovered browser challenges are excluded. Photo and LLM failures are outside this alert. After fixing an outage, replay affected emails with backend/scripts/reprocess_emails.py using a bounded time window or specific email IDs.",
+  "query": "sum(last_15m):sum:nestswipe.listing_access.failure{service:nestswipe-backend,env:prod,purpose:import,!listing_source:leboncoin}.as_count() > 0",
+  "message": "{{#is_alert}}A real listing import failed after retries and browser fallback. The dedicated failure counter triggered this alert; logs are only for diagnosis. Inspect listing_source, reason and http_status in backend logs and check the proxy and seloger-browser service.{{/is_alert}}\n\n{{#is_recovery}}No final import access failures were recorded in the last 15 minutes. Consult the scheduled probe monitors for active provider health.{{/is_recovery}}\n\nCovers email and manual imports except Leboncoin. HTTP 404/410 removals and recovered browser challenges are excluded. Photo and LLM failures are outside this alert. After fixing an outage, replay affected emails with backend/scripts/reprocess_emails.py using a bounded time window or specific email IDs.",
   "tags": ["service:nestswipe-backend", "env:prod", "application:nestswipe", "managed_by:nestswipe"],
   "priority": 3,
   "options": {
