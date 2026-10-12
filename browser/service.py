@@ -1,9 +1,11 @@
 """Internal listing renderer with persistent direct and French proxy browsers."""
 
 import asyncio
+import fcntl
 import logging
 import os
 import re
+import socket
 import uuid
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
@@ -77,12 +79,42 @@ def proxy_config(profile: Path) -> dict | None:
     }
 
 
+def clear_stale_chromium_locks(profile: Path):
+    """Recover an exclusively owned container profile without deleting cookies.
+
+    The dedicated volume belongs to one browser service. Its advisory lock must
+    be held before calling this; it also prevents concurrent replacement workers.
+    Chromium embeds the old container hostname in its own persistent lock.
+    """
+    lock = profile / "SingletonLock"
+    if not lock.is_symlink():
+        return
+    owner, separator, pid = os.readlink(lock).rpartition("-")
+    if not separator or not pid.isdigit() or int(pid) <= 0:
+        return
+    if owner == socket.gethostname():
+        try:
+            os.kill(int(pid), 0)
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            return
+        else:
+            return  # Never unlock a live local process.
+    for name in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+        entry = profile / name
+        if entry.is_symlink():
+            entry.unlink()
+    logger.info("Removed stale Chromium profile locks")
+
+
 class Renderer:
     def __init__(self, *, use_proxy: bool = True):
         self.use_proxy = use_proxy
         self.lock = asyncio.Lock()
         self.playwright = None
         self.context = None
+        self.profile_lock = None
 
     async def close(self):
         if self.context:
@@ -93,6 +125,9 @@ class Renderer:
             with suppress(Exception):
                 await self.playwright.stop()
             self.playwright = None
+        if self.profile_lock:
+            self.profile_lock.close()
+            self.profile_lock = None
 
     async def start(self):
         if self.context:
@@ -101,6 +136,14 @@ class Renderer:
         if not self.use_proxy:
             profile = profile / "direct"
         profile.mkdir(parents=True, exist_ok=True)
+        self.profile_lock = (profile / ".renderer.lock").open("a")
+        try:
+            fcntl.flock(self.profile_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            self.profile_lock.close()
+            self.profile_lock = None
+            raise
+        clear_stale_chromium_locks(profile / "chromium")
         self.playwright = await async_playwright().start()
         self.context = await self.playwright.chromium.launch_persistent_context(
             str(profile / "chromium"),

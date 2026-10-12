@@ -1,4 +1,7 @@
 import asyncio
+import fcntl
+import os
+import socket
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,12 +15,37 @@ from service import (
     skip_resource,
     render,
     RenderRequest,
+    clear_stale_chromium_locks,
 )
 
 URL = "https://www.seloger.com/annonce/achat/paris/267446L6C3DU"
 
 
 class UrlTests(unittest.TestCase):
+    def test_previous_container_locks_removed_without_losing_session(self):
+        with tempfile.TemporaryDirectory() as directory:
+            profile = Path(directory)
+            (profile / "SingletonLock").symlink_to("previous-container-123")
+            (profile / "SingletonCookie").symlink_to("old-cookie-lock")
+            (profile / "SingletonSocket").symlink_to("/tmp/old-chromium/socket")
+            (profile / "Cookies").write_text("retained browser session")
+            clear_stale_chromium_locks(profile)
+            self.assertFalse((profile / "SingletonLock").is_symlink())
+            self.assertFalse((profile / "SingletonCookie").is_symlink())
+            self.assertFalse((profile / "SingletonSocket").is_symlink())
+            self.assertEqual(
+                (profile / "Cookies").read_text(), "retained browser session"
+            )
+
+    def test_live_local_browser_lock_is_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            profile = Path(directory)
+            (profile / "SingletonLock").symlink_to(
+                f"{socket.gethostname()}-{os.getpid()}"
+            )
+            clear_stale_chromium_locks(profile)
+            self.assertTrue((profile / "SingletonLock").is_symlink())
+
     def test_known_listing_and_tracking_hosts(self):
         for url in (
             URL,
@@ -71,6 +99,23 @@ class UrlTests(unittest.TestCase):
 
 
 class RendererTests(unittest.IsolatedAsyncioTestCase):
+    async def test_another_worker_cannot_clear_profile_locks(self):
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.dict("os.environ", {"PROFILE_DIR": directory}),
+        ):
+            profile = Path(directory)
+            chromium = profile / "chromium"
+            chromium.mkdir()
+            (chromium / "SingletonLock").symlink_to("previous-container-123")
+            renderer = Renderer()
+            with (profile / ".renderer.lock").open("a") as owner:
+                fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                with self.assertRaises(BlockingIOError):
+                    await renderer.start()
+            self.assertTrue((chromium / "SingletonLock").is_symlink())
+            self.assertIsNone(renderer.profile_lock)
+
     async def test_failure_releases_browser_for_next_request(self):
         renderer = Renderer()
         renderer.start = AsyncMock()
