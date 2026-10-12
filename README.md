@@ -179,8 +179,8 @@ needed in production. No URLs, listing IDs or user identifiers are metric tags.
 The scraper emits `nestswipe.listing_access.attempts` and final `success`,
 `failure`, `unavailable` counters, tagged by `listing_source` and
 `purpose:import|probe`. Browser recovery counts as one success, not a failure.
-HTTP 404/410 removals are separate. Real email/manual import failures trigger
-the metric alert over a 15-minute window; it stays quiet during idle periods.
+HTTP 404/410 removals are separate. Real email/manual import failures are tracked
+in a diagnostic monitor over a 15-minute window, with notifications disabled.
 Structured `listing_access_failed` logs remain available for diagnosis only.
 
 Production also runs a bounded check every 10 minutes for SeLoger, PAP,
@@ -195,9 +195,11 @@ minutes; batches cannot overlap. Set `LISTING_PROBES_ENABLED=false` to disable
 locally (the default); production enables it in Compose.
 
 `nestswipe.listing_probe.healthy` is 1/0 for each provider. The provider monitor
-alerts when checks have no success in 20 minutes, or results are missing. The separate
+notifies only after four hours without a successful check, or four hours without
+results. Any successful check resets the outage window. New provider groups also
+wait four hours before evaluation. The separate
 `nestswipe.listing_probe.completed` heartbeat is emitted only after every provider
-finishes; no completed batch for 30 minutes alerts on a stopped scheduler, backend,
+finishes; no completed batch for four hours alerts on a stopped scheduler, backend,
 database failure or missing telemetry. Both successful and failed batches emit
 completion. Alerts remind hourly. Recovery of the import counter means a quiet
 15-minute window; probe recovery requires a successful check. These checks verify
@@ -206,7 +208,8 @@ the Gmail polling job. Unknown HTTP-200 interstitials can still need scraper fix
 
 Both access monitor definitions exclude `listing_source:leboncoin`. The existing
 email extraction log monitor (267843155) also excludes `@source:leboncoin` from
-its search; preserve this exclusion if editing or replacing that monitor.
+its search and has no notification recipients or renotifications. Keep it diagnostic
+only: isolated import failures do not establish a four-hour provider outage.
 
 Use credentials for the personal **ThomasDogFooding** organization, not a work
 organization. With `DD_API_KEY`, `DD_APP_KEY`, and `DD_SITE` injected into the
@@ -222,8 +225,8 @@ When using `dd-auth`, select the personal organization's UUID explicitly with
 may be a work account. The publisher verifies the credential's organization,
 validates all three definitions before applying, only updates uniquely named
 monitors with `managed_by:nestswipe`, and verifies saved queries, options and
-recipients. For migration, keep the old log alert until metric ingestion and new
-monitors are verified, then retire it to avoid duplicate notifications.
+recipients. The local `notification_enabled: false` setting suppresses recipient
+injection for diagnostic monitors and is stripped before submitting to Datadog.
 
 ## Email notifications (optional)
 

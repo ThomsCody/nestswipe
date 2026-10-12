@@ -1,16 +1,26 @@
 {
   "name": "Nestswipe: listing checks stopped reporting",
   "type": "query alert",
-  "query": "max(last_30m):max:nestswipe.listing_probe.completed{service:nestswipe-backend,env:prod}.fill(null) < 1",
-  "message": "{{#is_no_data}}No listing-check batch completed in the last 30 minutes. Check the backend, scheduler, database, Datadog Agent and metrics delivery. Silence is not evidence that listing access is healthy.{{/is_no_data}}\n\n{{#is_alert}}The listing-check completion signal is unhealthy. Check the backend scheduler and metrics delivery.{{/is_alert}}\n\n{{#is_recovery}}Listing checks are reporting again. Consult the per-provider check monitor for their results.{{/is_recovery}}\n\nA completion is sent only after all enabled providers have finished; both successful and failed checks count as completed.",
-  "tags": ["service:nestswipe-backend", "env:prod", "application:nestswipe", "managed_by:nestswipe"],
+  "query": "max(last_4h):max:nestswipe.listing_probe.completed{service:nestswipe-backend,env:prod}.fill(null) < 1",
+  "message": "{{#is_no_data}}No listing-check batch completed in the last 4 hours. Check the backend, scheduler, database, Datadog Agent and metrics delivery. Silence is not evidence that listing access is healthy.{{/is_no_data}}\n\n{{#is_alert}}The listing-check completion signal is unhealthy. Check the backend scheduler and metrics delivery.{{/is_alert}}\n\n{{#is_recovery}}Listing checks are reporting again. Consult the per-provider check monitor for their results.{{/is_recovery}}\n\nA completion is sent only after all enabled providers have finished; both successful and failed checks count as completed.",
+  "tags": [
+    "service:nestswipe-backend",
+    "env:prod",
+    "application:nestswipe",
+    "managed_by:nestswipe"
+  ],
   "priority": 3,
   "options": {
-    "thresholds": {"critical": 1},
+    "thresholds": {
+      "critical": 1
+    },
     "include_tags": true,
     "on_missing_data": "show_and_notify_no_data",
     "require_full_window": false,
     "renotify_interval": 60,
-    "renotify_statuses": ["alert", "no data"]
+    "renotify_statuses": [
+      "alert",
+      "no data"
+    ]
   }
 }

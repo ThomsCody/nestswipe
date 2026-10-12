@@ -64,20 +64,28 @@ def main():
     if identity["data"]["relationships"]["org"]["data"]["id"] != args.org_uuid:
         raise SystemExit("Credentials belong to a different Datadog organization.")
     payloads = [
-        json.loads(path.read_text())
+        prepare_payload(json.loads(path.read_text()), args.notify)
         for path in sorted(Path(__file__).parent.glob("*-monitor.json"))
     ]
     for payload in payloads:
-        payload["message"] += "\n\n" + args.notify
         request("POST", "/api/v1/monitor/validate", payload)
     if not args.apply:
         print("All monitor configurations validated; no monitor was changed.")
         return
     for payload in payloads:
-        upsert_monitor(request, payload, args.notify)
+        upsert_monitor(request, payload)
 
 
-def upsert_monitor(request, payload, notify):
+def prepare_payload(definition, notify):
+    payload = dict(definition)
+    # Local publishing policy, not a Datadog API field. Diagnostic monitors
+    # retain their state and metrics without sending short-incident emails.
+    if payload.pop("notification_enabled", True):
+        payload["message"] += "\n\n" + notify
+    return payload
+
+
+def upsert_monitor(request, payload):
     matches = [
         monitor
         for monitor in request(
@@ -101,7 +109,7 @@ def upsert_monitor(request, payload, notify):
     if (
         saved["query"] != payload["query"]
         or saved["type"] != payload["type"]
-        or notify not in saved["message"]
+        or saved["message"] != payload["message"]
         or any(
             saved["options"].get(key) != value
             for key, value in payload["options"].items()

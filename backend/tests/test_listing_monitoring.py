@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import runpy
 import socket
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -298,11 +299,11 @@ def test_monitor_queries_and_missing_data_contract():
     )
     assert (
         healthy["query"]
-        == "max(last_20m):min:nestswipe.listing_probe.healthy{service:nestswipe-backend,env:prod,!listing_source:leboncoin} by {listing_source}.fill(null) < 1"
+        == "max(last_4h):min:nestswipe.listing_probe.healthy{service:nestswipe-backend,env:prod,!listing_source:leboncoin} by {listing_source}.fill(null) < 1"
     )
     assert (
         heartbeat["query"]
-        == "max(last_30m):max:nestswipe.listing_probe.completed{service:nestswipe-backend,env:prod}.fill(null) < 1"
+        == "max(last_4h):max:nestswipe.listing_probe.completed{service:nestswipe-backend,env:prod}.fill(null) < 1"
     )
     for payload in [failure, healthy, heartbeat]:
         assert payload["type"] == "query alert"
@@ -310,4 +311,15 @@ def test_monitor_queries_and_missing_data_contract():
     assert failure["options"]["on_missing_data"] == "resolve"
     assert healthy["options"]["on_missing_data"] == "show_and_notify_no_data"
     assert heartbeat["options"]["on_missing_data"] == "show_and_notify_no_data"
+    assert healthy["options"]["new_group_delay"] == 4 * 60 * 60
+    assert failure["notification_enabled"] is False
+    assert failure["options"]["renotify_interval"] == 0
+    prepare = runpy.run_path(str(root / "publish_monitor.py"))["prepare_payload"]
+    for definition in (failure, healthy, heartbeat):
+        payload = prepare(definition, "@owner@example.com")
+        assert "notification_enabled" not in payload
+        assert ("@owner@example.com" in payload["message"]) == definition.get(
+            "notification_enabled", True
+        )
+        assert "@owner@example.com" not in definition["message"]
     assert 2 * probe.PROBE_INTERVAL_MINUTES <= 30
