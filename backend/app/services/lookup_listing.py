@@ -11,8 +11,12 @@ from app.services.browser_scraper import (
     detect_source_from_url,
     scrape_listing,
 )
-from app.services.duplicate_detector import compute_fingerprint, find_listing_in_household
+from app.services.duplicate_detector import (
+    compute_fingerprint,
+    find_listing_in_household,
+)
 from app.services.llm_extractor import extract_listing_from_page
+from app.services.listing_urls import reusable_listing_url
 from app.services.photo_storage import compute_phash, download_photo
 
 logger = logging.getLogger(__name__)
@@ -38,10 +42,12 @@ async def lookup_listing_in_archive(url: str, user: User, db: AsyncSession) -> i
     api_key = user.openai_api_key
     if not api_key:
         result = await db.execute(
-            select(User.openai_api_key).where(
+            select(User.openai_api_key)
+            .where(
                 User.household_id == user.household_id,
                 User.openai_api_key.isnot(None),
-            ).limit(1)
+            )
+            .limit(1)
         )
         api_key = result.scalar_one_or_none()
     if not api_key:
@@ -53,20 +59,25 @@ async def lookup_listing_in_archive(url: str, user: User, db: AsyncSession) -> i
         raise LookupError("Could not load the listing page.", status_code=502)
 
     # 2. LLM extraction to build the fingerprint
-    extracted, _, _ = await extract_listing_from_page(api_key, scraped.page_text, source)
+    extracted, _, _ = await extract_listing_from_page(
+        api_key, scraped.page_text, source
+    )
     if not extracted or not extracted.title:
-        raise LookupError("Could not extract listing data from the page.", status_code=502)
+        raise LookupError(
+            "Could not extract listing data from the page.", status_code=502
+        )
 
-    if source in ("consultantsimmobilier", "barnes", "junot") and "ap.immo" in url:
-        extracted.external_url = url
-    else:
-        extracted.external_url = scraped.resolved_url or url
+    extracted.external_url = reusable_listing_url(url, scraped.resolved_url, source)
     if scraped.source_id:
         extracted.source_id = scraped.source_id
 
     fingerprint = compute_fingerprint(
-        source, extracted.city, extracted.district,
-        extracted.sqm, extracted.bedrooms, extracted.price,
+        source,
+        extracted.city,
+        extracted.district,
+        extracted.sqm,
+        extracted.bedrooms,
+        extracted.price,
     )
 
     # 3. Download photos and compute phashes (no classification needed — just hashes)
@@ -80,9 +91,13 @@ async def lookup_listing_in_archive(url: str, user: User, db: AsyncSession) -> i
 
     # 4. Full 4-layer dedup across the household
     listing = await find_listing_in_household(
-        db, user.household_id, source,
-        extracted.source_id, extracted.external_url,
-        fingerprint, photo_phashes,
+        db,
+        user.household_id,
+        source,
+        extracted.source_id,
+        extracted.external_url,
+        fingerprint,
+        photo_phashes,
     )
 
     if not listing:

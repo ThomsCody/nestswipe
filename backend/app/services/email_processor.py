@@ -18,6 +18,7 @@ from app.services.browser_scraper import scrape_listing, MAX_PHOTOS_PER_LISTING
 from app.services.duplicate_detector import compute_fingerprint, find_duplicate
 from app.services.email_url_extractor import extract_listing_urls
 from app.services.llm_extractor import extract_listing_from_page
+from app.services.listing_urls import reusable_listing_url
 from app.services.photo_classifier import classify_photos
 from app.services.photo_scraper import extract_photos_from_html
 from app.services.photo_storage import (
@@ -86,7 +87,6 @@ def _detect_source(from_header: str) -> str:
     return "unknown"
 
 
-
 def _extract_html_body(payload: dict) -> str:
     """Recursively extract HTML body from Gmail message payload."""
     mime_type = payload.get("mimeType", "")
@@ -103,13 +103,20 @@ def _extract_html_body(payload: dict) -> str:
 
 def _gmail_list_messages(service, query: str, max_results: int = 50) -> list[dict]:
     """Synchronous Gmail API call — run via to_thread."""
-    results = service.users().messages().list(userId="me", q=query, maxResults=max_results).execute()
+    results = (
+        service.users()
+        .messages()
+        .list(userId="me", q=query, maxResults=max_results)
+        .execute()
+    )
     return results.get("messages", [])
 
 
 def _gmail_get_message(service, msg_id: str) -> dict:
     """Synchronous Gmail API call — run via to_thread."""
-    return service.users().messages().get(userId="me", id=msg_id, format="full").execute()
+    return (
+        service.users().messages().get(userId="me", id=msg_id, format="full").execute()
+    )
 
 
 async def _process_message(
@@ -149,15 +156,17 @@ async def _process_message(
         )
         if already_attempted.scalar_one_or_none() is not None:
             logger.info("Skipping already-processed email %s", msg_meta["id"])
-            db.add(ParseAttempt(
-                household_id=user.household_id,
-                user_id=user.id,
-                source=source,
-                email_id=msg_meta["id"],
-                url=None,
-                status="skipped_duplicate_email",
-                call_type="skipped_duplicate_email",
-            ))
+            db.add(
+                ParseAttempt(
+                    household_id=user.household_id,
+                    user_id=user.id,
+                    source=source,
+                    email_id=msg_meta["id"],
+                    url=None,
+                    status="skipped_duplicate_email",
+                    call_type="skipped_duplicate_email",
+                )
+            )
             await db.flush()
             await db.commit()
             return 0
@@ -166,44 +175,63 @@ async def _process_message(
     if not html_body:
         return 0
 
-    logger.info("Processing email from %s (msg %s, %d chars)", source, msg_meta["id"], len(html_body))
+    logger.info(
+        "Processing email from %s (msg %s, %d chars)",
+        source,
+        msg_meta["id"],
+        len(html_body),
+    )
 
     # Step 1: Extract candidate listing URLs from email HTML via LLM
-    candidate_urls, url_inp, url_out = await extract_listing_urls(user.openai_api_key, html_body, source)
+    candidate_urls, url_inp, url_out = await extract_listing_urls(
+        user.openai_api_key, html_body, source
+    )
     if not candidate_urls:
-        logger.warning("extraction_failed: no candidate URLs found",
-                       extra={"event": "extraction_failed", "reason": "no_urls",
-                              "source": source, "email_id": msg_meta["id"]})
-        db.add(ParseAttempt(
+        logger.warning(
+            "extraction_failed: no candidate URLs found",
+            extra={
+                "event": "extraction_failed",
+                "reason": "no_urls",
+                "source": source,
+                "email_id": msg_meta["id"],
+            },
+        )
+        db.add(
+            ParseAttempt(
+                household_id=user.household_id,
+                user_id=user.id,
+                source=source,
+                email_id=msg_meta["id"],
+                url=None,
+                status="failed",
+                fail_reason="no_urls",
+                llm_input_tokens=url_inp,
+                llm_output_tokens=url_out,
+                call_type="url_extraction",
+            )
+        )
+        await db.flush()
+        await db.commit()
+        return 0
+    logger.info(
+        "Email %s: found %d candidate URL(s)", msg_meta["id"], len(candidate_urls)
+    )
+
+    # Record the URL-extraction step's cost separately — it isn't tied
+    # to any single listing outcome below.
+    db.add(
+        ParseAttempt(
             household_id=user.household_id,
             user_id=user.id,
             source=source,
             email_id=msg_meta["id"],
             url=None,
-            status="failed",
-            fail_reason="no_urls",
+            status="tracking",
+            call_type="url_extraction",
             llm_input_tokens=url_inp,
             llm_output_tokens=url_out,
-            call_type="url_extraction",
-        ))
-        await db.flush()
-        await db.commit()
-        return 0
-    logger.info("Email %s: found %d candidate URL(s)", msg_meta["id"], len(candidate_urls))
-
-    # Record the URL-extraction step's cost separately — it isn't tied
-    # to any single listing outcome below.
-    db.add(ParseAttempt(
-        household_id=user.household_id,
-        user_id=user.id,
-        source=source,
-        email_id=msg_meta["id"],
-        url=None,
-        status="tracking",
-        call_type="url_extraction",
-        llm_input_tokens=url_inp,
-        llm_output_tokens=url_out,
-    ))
+        )
+    )
 
     # Pre-extract email photos as fallback (cheap, no LLM)
     email_photos = extract_photos_from_html(html_body, source)
@@ -216,38 +244,56 @@ async def _process_message(
         # Step 2: Scrape listing page → resolved URL, source_id, photos, page text
         scraped = await scrape_listing(url, source)
         if not scraped.resolved_url:
-            logger.warning("extraction_failed: no valid resolved page",
-                           extra={"event": "extraction_failed", "reason": "no_resolved_url",
-                                  "source": source, "url": url})
-            db.add(ParseAttempt(
-                household_id=user.household_id,
-                user_id=user.id,
-                source=source,
-                email_id=msg_meta["id"],
-                url=url,
-                status="failed",
-                fail_reason="no_resolved_url",
-            ))
+            logger.warning(
+                "extraction_failed: no valid resolved page",
+                extra={
+                    "event": "extraction_failed",
+                    "reason": "no_resolved_url",
+                    "source": source,
+                    "url": url,
+                },
+            )
+            db.add(
+                ParseAttempt(
+                    household_id=user.household_id,
+                    user_id=user.id,
+                    source=source,
+                    email_id=msg_meta["id"],
+                    url=url,
+                    status="failed",
+                    fail_reason="no_resolved_url",
+                )
+            )
             continue
         if not scraped.page_text:
-            logger.warning("extraction_failed: no page text extracted",
-                           extra={"event": "extraction_failed", "reason": "no_page_text",
-                                  "source": source, "url": url})
-            db.add(ParseAttempt(
-                household_id=user.household_id,
-                user_id=user.id,
-                source=source,
-                email_id=msg_meta["id"],
-                url=url,
-                status="failed",
-                fail_reason="no_page_text",
-            ))
+            logger.warning(
+                "extraction_failed: no page text extracted",
+                extra={
+                    "event": "extraction_failed",
+                    "reason": "no_page_text",
+                    "source": source,
+                    "url": url,
+                },
+            )
+            db.add(
+                ParseAttempt(
+                    household_id=user.household_id,
+                    user_id=user.id,
+                    source=source,
+                    email_id=msg_meta["id"],
+                    url=url,
+                    status="failed",
+                    fail_reason="no_page_text",
+                )
+            )
             continue
         if scraped.source_id and scraped.source_id in seen_source_ids:
             logger.info("Skipping duplicate source_id %s: %s", scraped.source_id, url)
             continue
         if scraped.resolved_url in seen_resolved_urls:
-            logger.info("Skipping duplicate resolved URL %s: %s", scraped.resolved_url, url)
+            logger.info(
+                "Skipping duplicate resolved URL %s: %s", scraped.resolved_url, url
+            )
             continue
         if scraped.source_id:
             seen_source_ids.add(scraped.source_id)
@@ -258,39 +304,45 @@ async def _process_message(
             user.openai_api_key, scraped.page_text, source
         )
         if not extracted or not extracted.title:
-            logger.warning("extraction_failed: LLM found no listing",
-                           extra={"event": "extraction_failed", "reason": "llm_no_listing",
-                                  "source": source, "url": url})
-            db.add(ParseAttempt(
-                household_id=user.household_id,
-                user_id=user.id,
-                source=source,
-                email_id=msg_meta["id"],
-                url=url,
-                status="failed",
-                fail_reason="llm_no_listing",
-                llm_input_tokens=llm_inp,
-                llm_output_tokens=llm_out,
-                page_extraction_input_tokens=llm_inp,
-                page_extraction_output_tokens=llm_out,
-                page_text_chars=len(scraped.page_text),
-            ))
+            logger.warning(
+                "extraction_failed: LLM found no listing",
+                extra={
+                    "event": "extraction_failed",
+                    "reason": "llm_no_listing",
+                    "source": source,
+                    "url": url,
+                },
+            )
+            db.add(
+                ParseAttempt(
+                    household_id=user.household_id,
+                    user_id=user.id,
+                    source=source,
+                    email_id=msg_meta["id"],
+                    url=url,
+                    status="failed",
+                    fail_reason="llm_no_listing",
+                    llm_input_tokens=llm_inp,
+                    llm_output_tokens=llm_out,
+                    page_extraction_input_tokens=llm_inp,
+                    page_extraction_output_tokens=llm_out,
+                    page_text_chars=len(scraped.page_text),
+                )
+            )
             continue
 
-        # Use resolved URL — except for consultantsimmobilier where
-        # the original ap.immo link carries auth query params (u=, p=)
-        # that are required to view the listing without an extranet login.
-        if source in ("consultantsimmobilier", "barnes", "junot") and "ap.immo" in url:
-            extracted.external_url = url
-        else:
-            extracted.external_url = scraped.resolved_url
+        extracted.external_url = reusable_listing_url(url, scraped.resolved_url, source)
         if scraped.source_id:
             extracted.source_id = scraped.source_id
 
         logger.info(
             "Extracted from page: %s — %s, %s€, %sm², %s bedrooms, floor %s",
-            extracted.title, extracted.city, extracted.price,
-            extracted.sqm, extracted.bedrooms, extracted.floor,
+            extracted.title,
+            extracted.city,
+            extracted.price,
+            extracted.sqm,
+            extracted.bedrooms,
+            extracted.floor,
         )
 
         # Compute price_per_sqm
@@ -299,8 +351,12 @@ async def _process_message(
             price_per_sqm = round(extracted.price / extracted.sqm, 2)
 
         fingerprint = compute_fingerprint(
-            source, extracted.city, extracted.district,
-            extracted.sqm, extracted.bedrooms, extracted.price,
+            source,
+            extracted.city,
+            extracted.district,
+            extracted.sqm,
+            extracted.bedrooms,
+            extracted.price,
         )
 
         # Photo fallback chain: listing page → email HTML
@@ -339,39 +395,53 @@ async def _process_message(
         photo_inp = photo_out = 0
         classified: list[tuple[bytes, str | None, str]] = []
         if needs_vision:
-            classified, photo_inp, photo_out = await classify_photos(user.openai_api_key, needs_vision)
+            classified, photo_inp, photo_out = await classify_photos(
+                user.openai_api_key, needs_vision
+            )
         photo_data = pre_approved + classified
         photo_phashes = [phash for _, phash, _ in photo_data if phash]
 
         # Skip listings with no photos
         if not photo_data:
-            logger.warning("extraction_failed: no usable photos",
-                           extra={"event": "extraction_failed", "reason": "no_photos",
-                                  "source": source, "url": url})
-            db.add(ParseAttempt(
-                household_id=user.household_id,
-                user_id=user.id,
-                source=source,
-                email_id=msg_meta["id"],
-                url=url,
-                status="failed",
-                fail_reason="no_photos",
-                llm_input_tokens=llm_inp + photo_inp,
-                llm_output_tokens=llm_out + photo_out,
-                page_extraction_input_tokens=llm_inp,
-                page_extraction_output_tokens=llm_out,
-                photo_classification_input_tokens=photo_inp,
-                photo_classification_output_tokens=photo_out,
-                page_text_chars=len(scraped.page_text),
-                photo_count=sent_photo_count,
-            ))
+            logger.warning(
+                "extraction_failed: no usable photos",
+                extra={
+                    "event": "extraction_failed",
+                    "reason": "no_photos",
+                    "source": source,
+                    "url": url,
+                },
+            )
+            db.add(
+                ParseAttempt(
+                    household_id=user.household_id,
+                    user_id=user.id,
+                    source=source,
+                    email_id=msg_meta["id"],
+                    url=url,
+                    status="failed",
+                    fail_reason="no_photos",
+                    llm_input_tokens=llm_inp + photo_inp,
+                    llm_output_tokens=llm_out + photo_out,
+                    page_extraction_input_tokens=llm_inp,
+                    page_extraction_output_tokens=llm_out,
+                    photo_classification_input_tokens=photo_inp,
+                    photo_classification_output_tokens=photo_out,
+                    page_text_chars=len(scraped.page_text),
+                    photo_count=sent_photo_count,
+                )
+            )
             continue
 
         # Check for duplicates
         existing = await find_duplicate(
-            db, user.id, source,
-            extracted.source_id, extracted.external_url,
-            fingerprint, photo_phashes,
+            db,
+            user.id,
+            source,
+            extracted.source_id,
+            extracted.external_url,
+            fingerprint,
+            photo_phashes,
         )
 
         now = datetime.now(timezone.utc)
@@ -379,16 +449,36 @@ async def _process_message(
         if existing:
             logger.info("Duplicate found (listing %d), updating", existing.id)
             existing.last_seen_at = now
+            # A later email can restore a bare or expired authenticated link.
+            # Do not replace a different provider's URL on a cross-source match.
+            if (
+                existing.source == source
+                and extracted.source_id
+                and existing.source_id == extracted.source_id
+            ):
+                existing.external_url = extracted.external_url
             if extracted.price and extracted.price != existing.price:
                 db.add(PriceHistory(listing_id=existing.id, price=extracted.price))
                 existing.price = extracted.price
                 if existing.sqm and existing.sqm > 0:
                     existing.price_per_sqm = round(extracted.price / existing.sqm, 2)
             # Backfill fields that were missing
-            for fld in ("title", "description", "sqm", "bedrooms", "rooms",
-                        "floor", "city", "district", "location_detail",
-                        "external_url", "source_id",
-                        "contact_phone", "agency_name", "agent_name"):
+            for fld in (
+                "title",
+                "description",
+                "sqm",
+                "bedrooms",
+                "rooms",
+                "floor",
+                "city",
+                "district",
+                "location_detail",
+                "external_url",
+                "source_id",
+                "contact_phone",
+                "agency_name",
+                "agent_name",
+            ):
                 new_val = getattr(extracted, fld, None)
                 if new_val is not None and getattr(existing, fld, None) is None:
                     setattr(existing, fld, new_val)
@@ -425,34 +515,38 @@ async def _process_message(
             # Upload photos
             for i, (img_bytes, phash, original_url) in enumerate(photo_data):
                 s3_key = upload_photo(minio_client, img_bytes)
-                db.add(ListingPhoto(
-                    listing_id=listing.id,
-                    s3_key=s3_key,
-                    original_url=original_url,
-                    phash=phash,
-                    position=i,
-                ))
+                db.add(
+                    ListingPhoto(
+                        listing_id=listing.id,
+                        s3_key=s3_key,
+                        original_url=original_url,
+                        phash=phash,
+                        position=i,
+                    )
+                )
 
             logger.info("Created new listing %d: %s", listing.id, listing.title)
 
-        db.add(ParseAttempt(
-            household_id=user.household_id,
-            user_id=user.id,
-            source=source,
-            email_id=msg_meta["id"],
-            url=url,
-            status="success",
-            fail_reason=None,
-            result="updated" if existing else "new",
-            llm_input_tokens=llm_inp + photo_inp,
-            llm_output_tokens=llm_out + photo_out,
-            page_extraction_input_tokens=llm_inp,
-            page_extraction_output_tokens=llm_out,
-            photo_classification_input_tokens=photo_inp,
-            photo_classification_output_tokens=photo_out,
-            page_text_chars=len(scraped.page_text),
-            photo_count=sent_photo_count,
-        ))
+        db.add(
+            ParseAttempt(
+                household_id=user.household_id,
+                user_id=user.id,
+                source=source,
+                email_id=msg_meta["id"],
+                url=url,
+                status="success",
+                fail_reason=None,
+                result="updated" if existing else "new",
+                llm_input_tokens=llm_inp + photo_inp,
+                llm_output_tokens=llm_out + photo_out,
+                page_extraction_input_tokens=llm_inp,
+                page_extraction_output_tokens=llm_out,
+                photo_classification_input_tokens=photo_inp,
+                photo_classification_output_tokens=photo_out,
+                page_text_chars=len(scraped.page_text),
+                photo_count=sent_photo_count,
+            )
+        )
         processed += 1
         # Commit after each listing so progress is saved
         await db.commit()
@@ -481,8 +575,15 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
 
     processed = 0
     try:
-        messages = await asyncio.to_thread(_gmail_list_messages, service, query, max_results)
-        logger.info("Gmail query: %s | Found %d email(s) for user %s", query, len(messages), user.email)
+        messages = await asyncio.to_thread(
+            _gmail_list_messages, service, query, max_results
+        )
+        logger.info(
+            "Gmail query: %s | Found %d email(s) for user %s",
+            query,
+            len(messages),
+            user.email,
+        )
 
         for msg_meta in messages:
             msg = await asyncio.to_thread(_gmail_get_message, service, msg_meta["id"])
@@ -524,6 +625,8 @@ async def reprocess_emails(user: User, db: AsyncSession, email_ids: list[str]) -
         except Exception:
             logger.exception("Failed to fetch Gmail message %s", email_id)
             continue
-        processed += await _process_message(user, db, {"id": email_id}, msg, minio_client, force=True)
+        processed += await _process_message(
+            user, db, {"id": email_id}, msg, minio_client, force=True
+        )
 
     return processed

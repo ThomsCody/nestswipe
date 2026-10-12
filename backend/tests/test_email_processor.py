@@ -1,6 +1,9 @@
 import base64
+from copy import deepcopy
 from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from sqlalchemy import select
 
@@ -28,7 +31,10 @@ FAKE_SCRAPED = ScrapedListing(
 FAKE_SCRAPED_PRE_APPROVED = ScrapedListing(
     resolved_url="https://www.seloger.com/annonces/456.htm",
     source_id="456",
-    photo_urls=["https://mms.seloger.com/photo1.jpg", "https://mms.seloger.com/photo2.jpg"],
+    photo_urls=[
+        "https://mms.seloger.com/photo1.jpg",
+        "https://mms.seloger.com/photo2.jpg",
+    ],
     photo_labels={"https://mms.seloger.com/photo1.jpg": "LIVING_ROOM"},
     page_text="Appartement 3 pieces 60m2",
 )
@@ -62,8 +68,12 @@ def _apply_all_patches(stack: ExitStack) -> None:
             return_value=["https://mms.seloger.com/photo1.jpg"]
         ),
         f"{_M}.scrape_listing": AsyncMock(return_value=FAKE_SCRAPED),
-        f"{_M}.extract_listing_from_page": AsyncMock(return_value=(FAKE_EXTRACTED, 10, 5)),
-        f"{_M}.classify_photos": AsyncMock(side_effect=lambda _key, data: (data, 20, 3)),
+        f"{_M}.extract_listing_from_page": AsyncMock(
+            return_value=(FAKE_EXTRACTED, 10, 5)
+        ),
+        f"{_M}.classify_photos": AsyncMock(
+            side_effect=lambda _key, data: (data, 20, 3)
+        ),
         f"{_M}.download_photo": AsyncMock(return_value=FAKE_PNG_BYTES),
         f"{_M}.compute_phash": MagicMock(return_value="abcdef1234567890"),
         f"{_M}.get_minio_client": MagicMock(return_value=MagicMock()),
@@ -75,6 +85,63 @@ def _apply_all_patches(stack: ExitStack) -> None:
 
 
 class TestProcessEmailsForUser:
+    @pytest.mark.parametrize("existing_source", [None, "junot", "pap"])
+    async def test_junot_authenticated_entry_point_is_stored_and_refreshed(
+        self, db_session, test_user, existing_source
+    ):
+        test_user.gmail_refresh_token = "test-refresh-token"
+        test_user.openai_api_key = "sk-test-key"
+        bare = "https://ap.immo/p/86114147"
+        original = "https://r.info.junot.fr/tr/cl/test-email-token"
+        existing = None
+        if existing_source:
+            existing = Listing(
+                user_id=test_user.id,
+                household_id=test_user.household_id,
+                source=existing_source,
+                source_id="86114147",
+                external_url=bare,
+                title="Existing apartment",
+            )
+            db_session.add(existing)
+        await db_session.commit()
+        message = deepcopy(FAKE_GMAIL_MESSAGE)
+        message["payload"]["headers"][0]["value"] = "alerts@info.junot.fr"
+        scraped = ScrapedListing(
+            resolved_url=bare,
+            source_id="86114147",
+            page_text="Apartment details",
+            photo_urls=["https://example.com/photo.jpg"],
+        )
+        with ExitStack() as stack:
+            _apply_all_patches(stack)
+            stack.enter_context(patch(f"{_M}._gmail_get_message", return_value=message))
+            stack.enter_context(
+                patch(
+                    f"{_M}.extract_listing_urls",
+                    AsyncMock(return_value=([original], 8, 2)),
+                )
+            )
+            stack.enter_context(
+                patch(f"{_M}.scrape_listing", AsyncMock(return_value=scraped))
+            )
+            stack.enter_context(
+                patch(
+                    f"{_M}.extract_listing_from_page",
+                    AsyncMock(return_value=(deepcopy(FAKE_EXTRACTED), 10, 5)),
+                )
+            )
+            if existing_source == "pap":
+                stack.enter_context(
+                    patch(f"{_M}.find_duplicate", AsyncMock(return_value=existing))
+                )
+            assert await process_emails_for_user(test_user, db_session) == 1
+        listings = (await db_session.execute(select(Listing))).scalars().all()
+        assert len(listings) == 1
+        assert listings[0].external_url == (
+            bare if existing_source == "pap" else original
+        )
+
     async def test_creates_listing(self, db_session, test_user):
         test_user.gmail_refresh_token = "test-refresh-token"
         test_user.openai_api_key = "sk-test-key"
@@ -86,7 +153,9 @@ class TestProcessEmailsForUser:
 
         assert count == 1
 
-        result = await db_session.execute(select(Listing).where(Listing.user_id == test_user.id))
+        result = await db_session.execute(
+            select(Listing).where(Listing.user_id == test_user.id)
+        )
         listing = result.scalars().first()
         assert listing is not None
         assert listing.title == "Bel Appartement"
@@ -110,7 +179,12 @@ class TestProcessEmailsForUser:
 
         with ExitStack() as stack:
             _apply_all_patches(stack)
-            stack.enter_context(patch(f"{_M}.scrape_listing", AsyncMock(return_value=FAKE_SCRAPED_PRE_APPROVED)))
+            stack.enter_context(
+                patch(
+                    f"{_M}.scrape_listing",
+                    AsyncMock(return_value=FAKE_SCRAPED_PRE_APPROVED),
+                )
+            )
             stack.enter_context(patch(f"{_M}.classify_photos", classify_mock))
             count = await process_emails_for_user(test_user, db_session)
 
@@ -119,7 +193,9 @@ class TestProcessEmailsForUser:
         sent_urls = [url for _, _, url in classify_mock.call_args.args[1]]
         assert sent_urls == ["https://mms.seloger.com/photo2.jpg"]
 
-        result = await db_session.execute(select(Listing).where(Listing.user_id == test_user.id))
+        result = await db_session.execute(
+            select(Listing).where(Listing.user_id == test_user.id)
+        )
         listing = result.scalars().first()
         photos_result = await db_session.execute(
             select(ListingPhoto).where(ListingPhoto.listing_id == listing.id)
@@ -136,7 +212,9 @@ class TestProcessEmailsForUser:
 
         assert count == 0
 
-        result = await db_session.execute(select(Listing).where(Listing.user_id == test_user.id))
+        result = await db_session.execute(
+            select(Listing).where(Listing.user_id == test_user.id)
+        )
         assert result.scalars().first() is None
 
     async def test_no_credentials_with_only_openai_key(self, db_session, test_user):

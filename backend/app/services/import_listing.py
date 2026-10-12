@@ -15,6 +15,7 @@ from app.services.browser_scraper import (
 )
 from app.services.duplicate_detector import compute_fingerprint, find_duplicate
 from app.services.llm_extractor import extract_listing_from_page
+from app.services.listing_urls import reusable_listing_url
 from app.services.photo_classifier import classify_photos
 from app.services.photo_cleanup import PLACEHOLDER_S3_KEY
 from app.config import settings
@@ -96,11 +97,7 @@ async def import_listing_from_url(
             "Could not extract listing data from the page.", status_code=502
         )
 
-    # Set URL — keep original for ap.immo links (they carry auth params)
-    if source in ("consultantsimmobilier", "barnes", "junot") and "ap.immo" in url:
-        extracted.external_url = url
-    else:
-        extracted.external_url = scraped.resolved_url or url
+    extracted.external_url = reusable_listing_url(url, scraped.resolved_url, source)
     if scraped.source_id:
         extracted.source_id = scraped.source_id
 
