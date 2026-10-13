@@ -169,6 +169,11 @@ export default function Archives() {
                     {item.listing.rooms} p.
                   </span>
                 )}
+                {item.listing.toilets != null && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-100 text-sky-700">
+                    {item.listing.toilets} WC
+                  </span>
+                )}
                 {item.listing.bedrooms != null && (
                   <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-100 text-teal-700">
                     {item.listing.bedrooms} ch.
@@ -178,7 +183,7 @@ export default function Archives() {
               <h3 className="font-medium text-gray-900 text-sm truncate">
                 {item.listing.title}
               </h3>
-              <div className="flex gap-2 text-xs text-gray-500 mt-1">
+              <div className="flex flex-wrap gap-2 text-xs text-gray-500 mt-1">
                 {item.listing.price != null && (
                   <span className="font-medium text-gray-700">
                     {item.listing.price.toLocaleString("fr-FR")} &euro;
@@ -188,6 +193,9 @@ export default function Archives() {
                 {item.listing.sqm != null && <span>{item.listing.sqm} m&sup2;</span>}
                 {item.listing.rooms != null && (
                   <span>{item.listing.rooms} p.</span>
+                )}
+                {item.listing.toilets != null && (
+                  <span>{item.listing.toilets} WC</span>
                 )}
                 {item.listing.bedrooms != null && (
                   <span>{item.listing.bedrooms} ch.</span>

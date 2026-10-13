@@ -72,6 +72,11 @@ function ListingCard({
               {listing.rooms} p.
             </span>
           )}
+          {listing.toilets != null && (
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-700">
+              {listing.toilets} WC
+            </span>
+          )}
           {listing.bedrooms != null && (
             <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
               {listing.bedrooms} ch.
@@ -91,6 +96,7 @@ function ListingCard({
             <span>{listing.price_per_sqm.toLocaleString("fr-FR")} &euro;/m&sup2;</span>
           )}
           {listing.rooms != null && <span>{listing.rooms} p.</span>}
+          {listing.toilets != null && <span>{listing.toilets} WC</span>}
           {listing.bedrooms != null && <span>{listing.bedrooms} ch.</span>}
         </div>
         {(listing.city || listing.district) && (

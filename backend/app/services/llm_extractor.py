@@ -4,7 +4,7 @@ import logging
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import task
 from openai import AsyncOpenAI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,7 @@ Return a JSON object with the following fields (use null for missing values):
 - source_id: string — unique identifier from the source (extract from URL if possible)
 - floor: integer — floor number (0 for ground floor, null if unknown)
 - rooms: integer — total number of rooms (pièces), distinct from bedrooms
+- toilets: integer — total number of WC/toilets explicitly stated for this property, including separate WC and WC in bathrooms. Do not infer from the number of bathrooms or rooms, or count the same WC twice. Use null if the count is unclear or missing; 0 only if explicitly stated.
 - photo_urls: list of strings — URLs of listing photos found in the email
 - description: string — brief description of the property
 
@@ -44,6 +45,7 @@ Each element should have these fields (use null for missing values):
 - source_id: string — unique identifier from the source (extract from URL if possible)
 - floor: integer — floor number (0 for ground floor, null if unknown)
 - rooms: integer — total number of rooms (pièces), distinct from bedrooms
+- toilets: integer — total number of WC/toilets explicitly stated for this property, including separate WC and WC in bathrooms. Do not infer from the number of bathrooms or rooms, or count the same WC twice. Use null if the count is unclear or missing; 0 only if explicitly stated.
 - photo_urls: list of strings — URLs of listing photos found in the email for THIS listing
 - description: string — brief description of the property
 
@@ -68,6 +70,7 @@ Return a JSON object with the following fields (use null for missing values):
 - location_detail: string — additional location info: street name, nearby metro station, landmarks
 - floor: integer — floor number (0 for ground floor / rez-de-chaussée, null if unknown)
 - rooms: integer — total number of rooms (pièces), distinct from bedrooms
+- toilets: integer — total number of WC/toilets explicitly stated for this property, including separate WC and WC in bathrooms. Do not infer from the number of bathrooms or rooms, or count the same WC twice. Use null if the count is unclear or missing; 0 only if explicitly stated.
 - description: string — brief description of the property (2-3 sentences max)
 
 IMPORTANT:
@@ -90,6 +93,7 @@ class ExtractedListing(BaseModel):
     bedrooms: int | None = None
     floor: int | None = None
     rooms: int | None = None
+    toilets: int | None = Field(default=None, ge=0)
     city: str | None = None
     district: str | None = None
     location_detail: str | None = None
@@ -103,7 +107,9 @@ class ExtractedListing(BaseModel):
 
 
 @task(name="extract_listing")
-async def extract_listing(api_key: str, email_html: str, source: str) -> ExtractedListing | None:
+async def extract_listing(
+    api_key: str, email_html: str, source: str
+) -> ExtractedListing | None:
     try:
         client = AsyncOpenAI(api_key=api_key)
         response = await client.chat.completions.create(
@@ -111,7 +117,10 @@ async def extract_listing(api_key: str, email_html: str, source: str) -> Extract
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": f"Source: {source}\n\nEmail HTML:\n{email_html[:15000]}"},
+                {
+                    "role": "user",
+                    "content": f"Source: {source}\n\nEmail HTML:\n{email_html[:15000]}",
+                },
             ],
             temperature=0,
         )
@@ -126,7 +135,9 @@ async def extract_listing(api_key: str, email_html: str, source: str) -> Extract
 
 
 @task(name="extract_listings")
-async def extract_listings(api_key: str, email_html: str, source: str) -> list[ExtractedListing]:
+async def extract_listings(
+    api_key: str, email_html: str, source: str
+) -> list[ExtractedListing]:
     """Extract all listings from an email that may contain multiple properties."""
     try:
         client = AsyncOpenAI(api_key=api_key)
@@ -137,7 +148,10 @@ async def extract_listings(api_key: str, email_html: str, source: str) -> list[E
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": MULTI_SYSTEM_PROMPT},
-                {"role": "user", "content": f"Source: {source}\n\nEmail HTML:\n{email_html[:max_chars]}"},
+                {
+                    "role": "user",
+                    "content": f"Source: {source}\n\nEmail HTML:\n{email_html[:max_chars]}",
+                },
             ],
             temperature=0,
         )

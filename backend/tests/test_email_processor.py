@@ -46,6 +46,7 @@ FAKE_EXTRACTED = ExtractedListing(
     price=450000,
     sqm=60,
     bedrooms=2,
+    toilets=2,
     city="Paris",
     district="Marais",
 )
@@ -187,6 +188,7 @@ class TestProcessEmailsForUser:
             assert await process_emails_for_user(test_user, db_session) == 1
         listings = (await db_session.execute(select(Listing))).scalars().all()
         assert len(listings) == 1
+        assert listings[0].toilets == 2
         assert listings[0].external_url == (
             bare if existing_source == "pap" else original
         )
@@ -210,6 +212,7 @@ class TestProcessEmailsForUser:
         assert listing.title == "Bel Appartement"
         assert listing.price == 450000
         assert listing.city == "Paris"
+        assert listing.toilets == 2
 
         photos_result = await db_session.execute(
             select(ListingPhoto).where(ListingPhoto.listing_id == listing.id)

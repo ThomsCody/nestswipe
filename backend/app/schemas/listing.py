@@ -26,6 +26,7 @@ class ListingResponse(BaseModel):
     price_per_sqm: float | None
     bedrooms: int | None
     rooms: int | None = None
+    toilets: int | None = None
     floor: int | None = None
     city: str | None
     district: str | None

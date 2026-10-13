@@ -22,6 +22,7 @@ class Listing(Base):
     price_per_sqm: Mapped[float | None] = mapped_column(Float)
     bedrooms: Mapped[int | None] = mapped_column(Integer)
     rooms: Mapped[int | None] = mapped_column(Integer)
+    toilets: Mapped[int | None] = mapped_column(Integer)
     floor: Mapped[int | None] = mapped_column(Integer)
     city: Mapped[str | None] = mapped_column(String(255))
     district: Mapped[str | None] = mapped_column(String(255))
@@ -30,18 +31,28 @@ class Listing(Base):
     agency_name: Mapped[str | None] = mapped_column(String(255))
     agent_name: Mapped[str | None] = mapped_column(String(255))
     fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
-    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    first_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
-    photos: Mapped[list["ListingPhoto"]] = relationship(back_populates="listing", cascade="all, delete-orphan")
-    price_history: Mapped[list["PriceHistory"]] = relationship(back_populates="listing", cascade="all, delete-orphan")
+    photos: Mapped[list["ListingPhoto"]] = relationship(
+        back_populates="listing", cascade="all, delete-orphan"
+    )
+    price_history: Mapped[list["PriceHistory"]] = relationship(
+        back_populates="listing", cascade="all, delete-orphan"
+    )
 
 
 class ListingPhoto(Base):
     __tablename__ = "listing_photos"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    listing_id: Mapped[int] = mapped_column(ForeignKey("listings.id", ondelete="CASCADE"), index=True)
+    listing_id: Mapped[int] = mapped_column(
+        ForeignKey("listings.id", ondelete="CASCADE"), index=True
+    )
     s3_key: Mapped[str] = mapped_column(String(512))
     original_url: Mapped[str | None] = mapped_column(String(1024))
     phash: Mapped[str | None] = mapped_column(String(64))
@@ -54,8 +65,12 @@ class PriceHistory(Base):
     __tablename__ = "price_history"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    listing_id: Mapped[int] = mapped_column(ForeignKey("listings.id", ondelete="CASCADE"), index=True)
+    listing_id: Mapped[int] = mapped_column(
+        ForeignKey("listings.id", ondelete="CASCADE"), index=True
+    )
     price: Mapped[float] = mapped_column(Float)
-    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
     listing: Mapped[Listing] = relationship(back_populates="price_history")

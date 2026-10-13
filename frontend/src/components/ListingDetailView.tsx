@@ -378,6 +378,8 @@ export default function ListingDetailView({
               {listing.price_per_sqm != null && (
                 <span>{listing.price_per_sqm.toLocaleString("fr-FR")} &euro;/m&sup2;</span>
               )}
+              {listing.rooms != null && <span>{listing.rooms} p.</span>}
+              {listing.toilets != null && <span>{listing.toilets} WC</span>}
               {listing.bedrooms != null && <span>{listing.bedrooms} ch.</span>}
             </div>
             {(listing.city || listing.district) && (

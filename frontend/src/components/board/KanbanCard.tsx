@@ -100,6 +100,11 @@ export default function KanbanCard({ item, members, onOwnerChange }: KanbanCardP
                   {item.listing.rooms} p.
                 </span>
               )}
+              {item.listing.toilets != null && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-100 text-sky-700">
+                  {item.listing.toilets} WC
+                </span>
+              )}
               {item.listing.bedrooms != null && (
                 <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-100 text-teal-700">
                   {item.listing.bedrooms} ch.

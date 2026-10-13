@@ -1,6 +1,6 @@
 """Backfill existing listings by re-scraping their page and running LLM extraction.
 
-Targets listings with NULL bedrooms or floor that have an external_url.
+Targets listings with NULL bedrooms, floor, or toilets that have an external_url.
 Run from the backend container:
 
     python -m scripts.backfill_listings [--dry-run] [--limit N]
@@ -9,7 +9,6 @@ Run from the backend container:
 import argparse
 import asyncio
 import logging
-import sys
 
 from sqlalchemy import or_, select
 
@@ -27,8 +26,15 @@ logger = logging.getLogger(__name__)
 
 # Fields to backfill from page extraction
 BACKFILL_FIELDS = (
-    "bedrooms", "rooms", "floor", "sqm",
-    "city", "district", "location_detail", "description",
+    "bedrooms",
+    "rooms",
+    "toilets",
+    "floor",
+    "sqm",
+    "city",
+    "district",
+    "location_detail",
+    "description",
 )
 
 
@@ -38,7 +44,13 @@ async def backfill(dry_run: bool = False, limit: int = 0) -> None:
         query = (
             select(Listing)
             .where(Listing.external_url.isnot(None))
-            .where(or_(Listing.bedrooms.is_(None), Listing.floor.is_(None)))
+            .where(
+                or_(
+                    Listing.bedrooms.is_(None),
+                    Listing.floor.is_(None),
+                    Listing.toilets.is_(None),
+                )
+            )
             .order_by(Listing.id)
         )
         if limit > 0:
@@ -57,7 +69,9 @@ async def backfill(dry_run: bool = False, limit: int = 0) -> None:
         )
         user = user_result.scalar_one_or_none()
         if not user or not user.openai_api_key:
-            logger.error("No user with an OpenAI API key found — cannot run LLM extraction")
+            logger.error(
+                "No user with an OpenAI API key found — cannot run LLM extraction"
+            )
             return
 
         updated = 0
@@ -66,8 +80,11 @@ async def backfill(dry_run: bool = False, limit: int = 0) -> None:
         for listing in listings:
             logger.info(
                 "[%d/%d] Backfilling listing %d: %s (%s)",
-                updated + skipped + 1, len(listings),
-                listing.id, listing.title, listing.external_url,
+                updated + skipped + 1,
+                len(listings),
+                listing.id,
+                listing.title,
+                listing.external_url,
             )
 
             scraped = await scrape_listing(listing.external_url, listing.source)
@@ -76,11 +93,16 @@ async def backfill(dry_run: bool = False, limit: int = 0) -> None:
                 skipped += 1
                 continue
 
-            extracted = await extract_listing_from_page(
-                user.openai_api_key, scraped.page_text, listing.source,
+            extracted, _, _ = await extract_listing_from_page(
+                user.openai_api_key,
+                scraped.page_text,
+                listing.source,
             )
             if not extracted:
-                logger.warning("  LLM extraction returned nothing for listing %d, skipping", listing.id)
+                logger.warning(
+                    "  LLM extraction returned nothing for listing %d, skipping",
+                    listing.id,
+                )
                 skipped += 1
                 continue
 
@@ -94,7 +116,12 @@ async def backfill(dry_run: bool = False, limit: int = 0) -> None:
                     changes.append(f"{fld}={new_val}")
 
             # Also update price_per_sqm if we now have sqm
-            if listing.price and listing.sqm and listing.sqm > 0 and not listing.price_per_sqm:
+            if (
+                listing.price
+                and listing.sqm
+                and listing.sqm > 0
+                and not listing.price_per_sqm
+            ):
                 ppsqm = round(listing.price / listing.sqm, 2)
                 if not dry_run:
                     listing.price_per_sqm = ppsqm
@@ -102,7 +129,9 @@ async def backfill(dry_run: bool = False, limit: int = 0) -> None:
 
             if changes:
                 prefix = "[DRY RUN] " if dry_run else ""
-                logger.info("  %sUpdated listing %d: %s", prefix, listing.id, ", ".join(changes))
+                logger.info(
+                    "  %sUpdated listing %d: %s", prefix, listing.id, ", ".join(changes)
+                )
                 updated += 1
             else:
                 logger.info("  No new data for listing %d", listing.id)
@@ -111,13 +140,24 @@ async def backfill(dry_run: bool = False, limit: int = 0) -> None:
             if not dry_run:
                 await db.commit()
 
-        logger.info("Done: %d updated, %d skipped out of %d total", updated, skipped, len(listings))
+        logger.info(
+            "Done: %d updated, %d skipped out of %d total",
+            updated,
+            skipped,
+            len(listings),
+        )
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Backfill listing fields from page scraping")
-    parser.add_argument("--dry-run", action="store_true", help="Log changes without writing to DB")
-    parser.add_argument("--limit", type=int, default=0, help="Max listings to process (0 = all)")
+    parser = argparse.ArgumentParser(
+        description="Backfill listing fields from page scraping"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Log changes without writing to DB"
+    )
+    parser.add_argument(
+        "--limit", type=int, default=0, help="Max listings to process (0 = all)"
+    )
     args = parser.parse_args()
 
     asyncio.run(backfill(dry_run=args.dry_run, limit=args.limit))
