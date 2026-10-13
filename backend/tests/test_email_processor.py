@@ -1,6 +1,7 @@
 import base64
 from copy import deepcopy
 from contextlib import ExitStack
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -85,6 +86,54 @@ def _apply_all_patches(stack: ExitStack) -> None:
 
 
 class TestProcessEmailsForUser:
+    @pytest.mark.parametrize(
+        "last_poll", [None, datetime(2026, 10, 13, tzinfo=timezone.utc)]
+    )
+    @pytest.mark.parametrize(
+        "sender",
+        [
+            "alerts@bellesdemeures.com",
+            "Belles Demeures <ALERTS@EMAIL.BELLESDEMEURES.COM>",
+        ],
+    )
+    async def test_bellesdemeures_email_is_fetched_and_processed(
+        self, db_session, test_user, sender, last_poll
+    ):
+        test_user.gmail_refresh_token = "test-refresh-token"
+        test_user.openai_api_key = "sk-test-key"
+        test_user.last_email_poll = last_poll
+        await db_session.commit()
+        message = deepcopy(FAKE_GMAIL_MESSAGE)
+        message["payload"]["headers"][0]["value"] = sender
+        url = "https://www.bellesdemeures.com/annonces/vente/256203535/"
+        scraped = deepcopy(FAKE_SCRAPED)
+        scraped.resolved_url = url
+        scraped.source_id = "256203535"
+
+        with ExitStack() as stack:
+            _apply_all_patches(stack)
+            list_messages = stack.enter_context(
+                patch(f"{_M}._gmail_list_messages", return_value=[{"id": "msg1"}])
+            )
+            stack.enter_context(patch(f"{_M}._gmail_get_message", return_value=message))
+            extract_urls = stack.enter_context(
+                patch(
+                    f"{_M}.extract_listing_urls", AsyncMock(return_value=([url], 8, 2))
+                )
+            )
+            scrape = stack.enter_context(
+                patch(f"{_M}.scrape_listing", AsyncMock(return_value=scraped))
+            )
+            assert await process_emails_for_user(test_user, db_session) == 1
+
+        assert "from:bellesdemeures.com" in list_messages.call_args.args[1].split()
+        assert extract_urls.await_args.args[2] == "seloger"
+        scrape.assert_awaited_once_with(url, "seloger")
+        listing = (await db_session.execute(select(Listing))).scalar_one()
+        assert listing.source == "seloger"
+        assert listing.source_id == "256203535"
+        assert listing.external_url == url
+
     @pytest.mark.parametrize("existing_source", [None, "junot", "pap"])
     async def test_junot_authenticated_entry_point_is_stored_and_refreshed(
         self, db_session, test_user, existing_source

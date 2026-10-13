@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 SOURCES = {
     "seloger.com": "seloger",
+    "bellesdemeures.com": "seloger",
     "pap.fr": "pap",
     "consultantsimmobilier.com": "consultantsimmobilier",
     "barnes-international.com": "barnes",
