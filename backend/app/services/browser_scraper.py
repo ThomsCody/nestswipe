@@ -10,6 +10,7 @@ from curl_cffi.requests import AsyncSession
 
 from app.config import settings
 from app.services import listing_metrics
+from app.services.listing_contact import extract_contact, normalize_phone
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +176,9 @@ class ScrapedListing:
     # Absence from this dict means "no confident signal, needs vision".
     photo_labels: dict[str, str] = field(default_factory=dict)
     page_text: str | None = None
+    contact_phone: str | None = None
+    agency_name: str | None = None
+    agent_name: str | None = None
     unavailable: bool = False
 
 
@@ -507,6 +511,13 @@ async def _scrape_browser(url: str, source: str) -> ScrapedListing | None:
         if not page_text:
             return None
         photos, labels = _extract_photos_from_html(html, source)
+        contact = extract_contact(html, final_url)
+        if urlparse(final_url).hostname in {
+            "bellesdemeures.com",
+            "www.bellesdemeures.com",
+        }:
+            if phone := normalize_phone(data.get("contact_phone")):
+                contact["contact_phone"] = phone
         logger.info(
             "Rendered fallback succeeded: source=%s photos=%d page_text=%d chars",
             source,
@@ -519,6 +530,7 @@ async def _scrape_browser(url: str, source: str) -> ScrapedListing | None:
             photo_urls=photos,
             photo_labels=labels,
             page_text=page_text,
+            **contact,
         )
     except Exception as exc:
         # Proxy exceptions may embed credentials; never log their message/traceback.
@@ -633,6 +645,8 @@ async def _scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
                     resp.text, source
                 )
                 result.page_text = _extract_page_text(resp.text)
+                for key, value in extract_contact(resp.text, final_url).items():
+                    setattr(result, key, value)
                 logger.info(
                     "Scraped listing: url=%s source_id=%s photos=%d page_text=%d chars",
                     result.resolved_url,
@@ -675,6 +689,21 @@ async def _scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
         recovered = await _scrape_browser(result.resolved_url or tracking_url, source)
         if recovered:
             return recovered
+
+    # Belles Demeures resolves its displayed phone only after a browser action,
+    # even when the initial HTML fetch succeeds. Keep the usable scrape if the
+    # optional contact enrichment fails.
+    if (
+        result.page_text
+        and not result.contact_phone
+        and urlparse(result.resolved_url or "").hostname
+        in {"bellesdemeures.com", "www.bellesdemeures.com"}
+    ):
+        enriched = await _scrape_browser(result.resolved_url, source)
+        if enriched:
+            for key in ("contact_phone", "agency_name", "agent_name"):
+                if value := getattr(enriched, key):
+                    setattr(result, key, value)
 
     if not result.page_text:
         # Alert only on the final outcome: a challenge recovered by Chromium is

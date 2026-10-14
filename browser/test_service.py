@@ -136,7 +136,7 @@ class RendererTests(unittest.IsolatedAsyncioTestCase):
         active = 0
         maximum = 0
 
-        async def render_page(url):
+        async def render_page(url, *, deadline=None):
             nonlocal active, maximum
             active += 1
             maximum = max(maximum, active)
@@ -166,6 +166,66 @@ class RendererTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(HTTPException):
             await renderer.render("https://127.0.0.1/")
         renderer.start.assert_not_called()
+
+
+class PhoneResolutionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_resolved_number_is_returned(self):
+        from unittest.mock import MagicMock
+        from service import resolve_listing_phone
+
+        page = MagicMock()
+        page.url = "https://www.bellesdemeures.com/annonces/vente/282384907/"
+        page.evaluate = AsyncMock(return_value="01 59 13 83 47")
+        self.assertEqual(await resolve_listing_phone(page, None), "01 59 13 83 47")
+
+    async def test_invalid_and_failed_responses_are_optional(self):
+        from unittest.mock import MagicMock
+        from service import resolve_listing_phone
+
+        page = MagicMock()
+        page.url = "https://www.bellesdemeures.com/annonces/vente/282384907/"
+        for result in [None, {}, "", "<html>blocked</html>"]:
+            page.evaluate = AsyncMock(return_value=result)
+            self.assertIsNone(await resolve_listing_phone(page, None))
+        page.evaluate = AsyncMock(side_effect=RuntimeError("unavailable"))
+        self.assertIsNone(await resolve_listing_phone(page, None))
+
+    async def test_other_sites_have_no_phone_request(self):
+        from unittest.mock import MagicMock
+        from service import resolve_listing_phone
+
+        page = MagicMock()
+        page.url = URL
+        self.assertIsNone(await resolve_listing_phone(page, None))
+        page.evaluate.assert_not_called()
+
+    async def test_optional_lookup_finishes_before_outer_deadline(self):
+        from unittest.mock import MagicMock
+        from service import resolve_listing_phone
+
+        page = MagicMock()
+        page.url = "https://www.bellesdemeures.com/annonces/vente/282384907/"
+
+        async def stuck(_script):
+            await asyncio.sleep(10)
+
+        page.evaluate = AsyncMock(side_effect=stuck)
+        async with asyncio.timeout(0.2):
+            result = await resolve_listing_phone(
+                page, asyncio.get_running_loop().time() + 2.01
+            )
+        self.assertIsNone(result)
+
+    async def test_no_time_left_skips_optional_lookup(self):
+        from unittest.mock import MagicMock
+        from service import resolve_listing_phone
+
+        page = MagicMock()
+        page.url = "https://www.bellesdemeures.com/annonces/vente/282384907/"
+        self.assertIsNone(
+            await resolve_listing_phone(page, asyncio.get_running_loop().time() + 1)
+        )
+        page.evaluate.assert_not_called()
 
 
 if __name__ == "__main__":

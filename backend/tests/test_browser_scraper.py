@@ -366,3 +366,78 @@ async def test_provider_transport_error_recovers(
         result = await scraper.scrape_listing(url, source)
     assert result.source_id == source_id
     renderer.post.assert_awaited_once()
+
+
+@pytest.mark.parametrize("browser_fallback", [False, True])
+async def test_seloger_contact_survives_both_scrape_paths(
+    configured, renderer, browser_fallback
+):
+    from tests.test_listing_contact import contact_page
+
+    html = PAGE + contact_page("267446L6C3DU")
+    renderer.post.return_value = httpx.Response(
+        200,
+        json={"url": URL, "html": html},
+        request=httpx.Request("POST", "http://browser:8000/render"),
+    )
+    fetched = (
+        response(403, "Please enable JS", headers={"x-datadome": "protected"})
+        if browser_fallback
+        else response(body=html)
+    )
+    with patch.object(
+        scraper, "AsyncSession", return_value=session(response(), fetched)
+    ):
+        result = await scraper.scrape_listing(URL, "seloger")
+    assert result.contact_phone == "06 14 59 87 04"
+    assert result.agency_name == "IVA IMMOBILIER"
+    assert result.agent_name == "Ethan Naim"
+
+
+@pytest.mark.parametrize("browser_succeeds", [False, True])
+async def test_bellesdemeures_enriches_successful_html_without_losing_listing(
+    configured, browser_succeeds
+):
+    url = "https://www.bellesdemeures.com/annonces/vente/282384907/"
+    enriched = (
+        scraper.ScrapedListing(page_text="rendered", contact_phone="01 59 13 83 47")
+        if browser_succeeds
+        else None
+    )
+    with (
+        patch.object(
+            scraper,
+            "AsyncSession",
+            return_value=session(response(), response(body=PAGE, url=url)),
+        ),
+        patch.object(
+            scraper, "_scrape_browser", AsyncMock(return_value=enriched)
+        ) as browser,
+    ):
+        result = await scraper.scrape_listing(url, "seloger")
+    browser.assert_awaited_once_with(url, "seloger")
+    assert "950 000" in result.page_text
+    assert result.photo_urls
+    assert result.contact_phone == ("01 59 13 83 47" if browser_succeeds else None)
+
+
+@pytest.mark.parametrize(
+    "number,expected",
+    [
+        ("01 59 13 83 47", "01 59 13 83 47"),
+        (None, None),
+        ("<html>blocked</html>", None),
+    ],
+)
+async def test_bellesdemeures_renderer_phone_response(
+    configured, renderer, number, expected
+):
+    url = "https://www.bellesdemeures.com/annonces/vente/282384907/"
+    renderer.post.return_value = httpx.Response(
+        200,
+        json={"url": url, "html": PAGE, "contact_phone": number},
+        request=httpx.Request("POST", "http://browser:8000/render"),
+    )
+    result = await scraper._scrape_browser(url, "seloger")
+    assert result.page_text
+    assert result.contact_phone == expected

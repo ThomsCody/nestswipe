@@ -98,6 +98,9 @@ async def import_listing_from_url(
         )
 
     extracted.external_url = reusable_listing_url(url, scraped.resolved_url, source)
+    for field in ("contact_phone", "agency_name", "agent_name"):
+        if value := getattr(scraped, field):
+            setattr(extracted, field, value)
     if scraped.source_id:
         extracted.source_id = scraped.source_id
 

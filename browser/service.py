@@ -161,11 +161,11 @@ class Renderer:
             raise HTTPException(400, "Unsupported listing URL")
         try:
             # Includes time queued behind another scrape, not just navigation.
-            async with asyncio.timeout(75):
+            async with asyncio.timeout(75) as budget:
                 async with self.lock:
                     try:
                         await self.start()
-                        return await self._render_page(url)
+                        return await self._render_page(url, deadline=budget.when())
                     except BaseException:
                         # A crashed/disconnected browser must not poison later requests.
                         await self.close()
@@ -176,7 +176,7 @@ class Renderer:
             logger.warning("Browser rendering failed: %s", type(exc).__name__)
             raise HTTPException(502, "Listing could not be rendered") from None
 
-    async def _render_page(self, url: str) -> dict:
+    async def _render_page(self, url: str, *, deadline: float | None = None) -> dict:
         page = await self.context.new_page()
         status = None
 
@@ -213,10 +213,45 @@ class Renderer:
             html = await page.content()
             if len(html.encode()) > MAX_HTML_BYTES:
                 raise HTTPException(502, "Listing page is too large")
-            return {"url": page.url, "html": html}
+            phone = await resolve_listing_phone(page, deadline)
+            return {"url": page.url, "html": html, "contact_phone": phone}
         finally:
             with suppress(Exception):
                 await page.close()
+
+
+async def resolve_listing_phone(page, deadline: float | None) -> str | None:
+    """Resolve the same public number as the phone button, without sending a lead."""
+    if urlsplit(page.url).hostname not in {
+        "www.bellesdemeures.com",
+        "bellesdemeures.com",
+    }:
+        return None
+    remaining = deadline - asyncio.get_running_loop().time() - 2 if deadline else 12
+    if remaining <= 0:
+        return None
+    try:
+        async with asyncio.timeout(min(12, remaining)):
+            number = await page.evaluate(r"""async () => {
+                const contact = document.querySelector('.js_agencyContact [data-contact]');
+                if (!contact) return null;
+                const {id, phone, agency} = contact.dataset;
+                const listingId = location.pathname.replace(/\/$/, '').split('/').pop();
+                if (!id || id !== listingId || !phone || !agency) return null;
+                const response = await fetch('/GetNumber', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({phoneNumber: phone, agencyId: agency, classifiedId: id}),
+                    signal: AbortSignal.timeout(10000)
+                });
+                if (!response.ok) return null;
+                return await response.json();
+            }""")
+            if isinstance(number, str) and re.fullmatch(r"[+0-9 ()\.-]{8,25}", number):
+                return number
+    except Exception as exc:
+        logger.warning("Phone lookup unavailable: %s", type(exc).__name__)
+    return None
 
 
 renderer = Renderer()

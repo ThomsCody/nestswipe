@@ -276,3 +276,42 @@ async def test_reimport_refreshes_photos(
         assert photos[0].original_url == photo_url
         assert photos[0].phash == "1234"
         assert photos[0].position == 0
+
+
+async def test_scraped_contact_overrides_llm_and_prefills_favorite(
+    db_session, test_user
+):
+    test_user.openai_api_key = "test-key"
+    url = "https://www.seloger.com/annonce/achat/paris/26GX2GLYEDPN"
+    scraped = ScrapedListing(
+        resolved_url=url,
+        source_id="26GX2GLYEDPN",
+        page_text="Appartement",
+        contact_phone="06 14 59 87 04",
+        agency_name="IVA IMMOBILIER",
+        agent_name="Ethan Naim",
+    )
+    extracted = ExtractedListing(
+        is_listing=True,
+        title="Appartement",
+        contact_phone="01 53 38 28 00",
+        agency_name="SeLoger",
+    )
+    with (
+        patch(
+            "app.services.import_listing.scrape_listing",
+            AsyncMock(return_value=scraped),
+        ),
+        patch(
+            "app.services.import_listing.extract_listing_from_page",
+            AsyncMock(return_value=(extracted, 0, 0)),
+        ),
+        patch("app.services.import_listing.get_minio_client"),
+        patch("app.services.import_listing.ensure_bucket"),
+    ):
+        result = await import_listing_from_url(url, test_user, db_session)
+    assert result.listing.contact_phone == "06 14 59 87 04"
+    assert result.listing.agent_name == "Ethan Naim"
+    assert result.favorite.seller_phone == "06 14 59 87 04"
+    assert result.favorite.seller_name == "IVA IMMOBILIER"
+    assert result.favorite.seller_is_agency is True

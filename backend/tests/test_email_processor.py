@@ -278,3 +278,31 @@ class TestProcessEmailsForUser:
         count = await process_emails_for_user(test_user, db_session)
 
         assert count == 0
+
+
+async def test_email_persists_scraped_contact_over_llm(db_session, test_user):
+    test_user.gmail_refresh_token = "test-refresh-token"
+    test_user.openai_api_key = "test-key"
+    await db_session.commit()
+    scraped = deepcopy(FAKE_SCRAPED)
+    scraped.contact_phone = "06 14 59 87 04"
+    scraped.agency_name = "IVA IMMOBILIER"
+    scraped.agent_name = "Ethan Naim"
+    extracted = deepcopy(FAKE_EXTRACTED)
+    extracted.contact_phone = "01 53 38 28 00"
+    with ExitStack() as stack:
+        _apply_all_patches(stack)
+        stack.enter_context(
+            patch(f"{_M}.scrape_listing", AsyncMock(return_value=scraped))
+        )
+        stack.enter_context(
+            patch(
+                f"{_M}.extract_listing_from_page",
+                AsyncMock(return_value=(extracted, 0, 0)),
+            )
+        )
+        assert await process_emails_for_user(test_user, db_session) == 1
+    listing = (await db_session.scalars(select(Listing))).one()
+    assert listing.contact_phone == "06 14 59 87 04"
+    assert listing.agency_name == "IVA IMMOBILIER"
+    assert listing.agent_name == "Ethan Naim"
