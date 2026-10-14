@@ -109,8 +109,9 @@ def clear_stale_chromium_locks(profile: Path):
 
 
 class Renderer:
-    def __init__(self, *, use_proxy: bool = True):
+    def __init__(self, *, use_proxy: bool = True, profile_name: str | None = None):
         self.use_proxy = use_proxy
+        self.profile_name = profile_name
         self.lock = asyncio.Lock()
         self.playwright = None
         self.context = None
@@ -133,7 +134,9 @@ class Renderer:
         if self.context:
             return
         profile = Path(os.environ.get("PROFILE_DIR", "/data/profile"))
-        if not self.use_proxy:
+        if self.profile_name:
+            profile = profile / self.profile_name
+        elif not self.use_proxy:
             profile = profile / "direct"
         profile.mkdir(parents=True, exist_ok=True)
         self.profile_lock = (profile / ".renderer.lock").open("a")
@@ -256,6 +259,7 @@ async def resolve_listing_phone(page, deadline: float | None) -> str | None:
 
 renderer = Renderer()
 pap_renderer = Renderer(use_proxy=False)
+bellesdemeures_renderer = Renderer(profile_name="bellesdemeures")
 
 
 @asynccontextmanager
@@ -263,6 +267,7 @@ async def lifespan(app):
     yield
     await renderer.close()
     await pap_renderer.close()
+    await bellesdemeures_renderer.close()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -281,9 +286,11 @@ async def health():
 async def render(request: RenderRequest):
     if not allowed_url(request.url):
         raise HTTPException(400, "Unsupported listing URL")
-    target = (
-        pap_renderer
-        if urlsplit(request.url).hostname in {"pap.fr", "www.pap.fr"}
-        else renderer
-    )
+    host = urlsplit(request.url).hostname
+    if host in {"pap.fr", "www.pap.fr"}:
+        target = pap_renderer
+    elif host in {"bellesdemeures.com", "www.bellesdemeures.com"}:
+        target = bellesdemeures_renderer
+    else:
+        target = renderer
     return await target.render(request.url)

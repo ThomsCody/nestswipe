@@ -167,6 +167,22 @@ class RendererTests(unittest.IsolatedAsyncioTestCase):
             await renderer.render("https://127.0.0.1/")
         renderer.start.assert_not_called()
 
+    async def test_bellesdemeures_uses_separate_persistent_proxy_session(self):
+        from service import bellesdemeures_renderer
+
+        with (
+            patch(
+                "service.bellesdemeures_renderer.render", new_callable=AsyncMock
+            ) as belles,
+            patch("service.renderer.render", new_callable=AsyncMock) as seloger,
+        ):
+            url = "https://www.bellesdemeures.com/annonces/vente/282384907/"
+            await render(RenderRequest(url=url))
+            belles.assert_awaited_once_with(url)
+            seloger.assert_not_called()
+            self.assertEqual(bellesdemeures_renderer.profile_name, "bellesdemeures")
+            self.assertTrue(bellesdemeures_renderer.use_proxy)
+
 
 class PhoneResolutionTests(unittest.IsolatedAsyncioTestCase):
     async def test_resolved_number_is_returned(self):
