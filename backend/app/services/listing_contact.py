@@ -28,14 +28,16 @@ def extract_contact(html: str, url: str) -> dict[str, str]:
     if host in {"bellesdemeures.com", "www.bellesdemeures.com"}:
         # Only the revealed link is authoritative: data-phone can be replaced
         # by /GetNumber when the site displays its listing contact number.
-        contact = soup.select_one(".js_agencyContact")
+        # SoupSieve's lazy CSS regex lock can deadlock with the production
+        # profiler's lock-name inspection. Direct tree searches avoid that lock.
+        contact = soup.find(class_="js_agencyContact")
         if contact is None:
             return {}
         result = {}
-        phone = contact.select_one('.js_phoneNumber[href^="tel:"]')
+        phone = contact.find(class_="js_phoneNumber", href=re.compile(r"^tel:"))
         if phone and (number := normalize_phone(unquote(phone["href"][4:]))):
             result["contact_phone"] = number
-        agency = contact.select_one('a[href*="/annuaire-agences-immobilieres/"]')
+        agency = contact.find("a", href=re.compile(r"/annuaire-agences-immobilieres/"))
         if agency:
             name = agency.get_text(" ", strip=True)
             if not name and (logo := agency.find("img", alt=True)):

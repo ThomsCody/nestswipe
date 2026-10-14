@@ -72,7 +72,13 @@ def test_malformed_data_is_optional(payload):
     )
 
 
-def test_bellesdemeures_uses_only_revealed_agency_link():
+def test_bellesdemeures_uses_only_revealed_agency_link(monkeypatch):
+    import soupsieve
+
+    def css_selector_forbidden(*args, **kwargs):
+        raise AssertionError("CSS selector compilation deadlocks with lock profiling")
+
+    monkeypatch.setattr(soupsieve, "select_one", css_selector_forbidden)
     url = "https://www.bellesdemeures.com/annonces/vente/282384907/"
     html = """<aside class="js_agencyContact">
     <input data-phone="0142247700"><a class="js_phoneNumber" href=""></a>
