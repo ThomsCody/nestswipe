@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.models.listing import Listing, ListingPhoto
 from app.services.browser_scraper import ScrapedListing
+from app.services.duplicate_detector import compute_fingerprint
 from app.services.email_processor import process_emails_for_user
 from app.services.llm_extractor import ExtractedListing
 
@@ -189,9 +190,53 @@ class TestProcessEmailsForUser:
         listings = (await db_session.execute(select(Listing))).scalars().all()
         assert len(listings) == 1
         assert listings[0].toilets == 2
-        assert listings[0].external_url == (
-            bare if existing_source == "pap" else original
+        assert listings[0].external_url == original
+
+    @pytest.mark.parametrize("source_id", ["123", "old-publication", None])
+    async def test_listing_update_refreshes_link(
+        self, db_session, test_user, source_id
+    ):
+        test_user.gmail_refresh_token = "test-refresh-token"
+        test_user.openai_api_key = "sk-test-key"
+        old_seen_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        existing = Listing(
+            user_id=test_user.id,
+            household_id=test_user.household_id,
+            source="seloger",
+            source_id=source_id,
+            external_url="https://www.seloger.com/annonces/old-publication.htm",
+            title="Existing apartment",
+            fingerprint=compute_fingerprint(
+                "seloger",
+                FAKE_EXTRACTED.city,
+                FAKE_EXTRACTED.district,
+                FAKE_EXTRACTED.sqm,
+                FAKE_EXTRACTED.bedrooms,
+                FAKE_EXTRACTED.price,
+            ),
+            first_seen_at=old_seen_at,
+            last_seen_at=old_seen_at,
         )
+        db_session.add(existing)
+        await db_session.commit()
+        listing_id = existing.id
+
+        with ExitStack() as stack:
+            _apply_all_patches(stack)
+            stack.enter_context(
+                patch(
+                    f"{_M}.extract_listing_from_page",
+                    AsyncMock(return_value=(deepcopy(FAKE_EXTRACTED), 10, 5)),
+                )
+            )
+            assert await process_emails_for_user(test_user, db_session) == 1
+
+        db_session.expire_all()
+        listing = (await db_session.execute(select(Listing))).scalar_one()
+        assert listing.id == listing_id
+        assert listing.external_url == FAKE_SCRAPED.resolved_url
+        assert listing.first_seen_at.replace(tzinfo=timezone.utc) == old_seen_at
+        assert listing.last_seen_at.replace(tzinfo=timezone.utc) > old_seen_at
 
     async def test_creates_listing(self, db_session, test_user):
         test_user.gmail_refresh_token = "test-refresh-token"

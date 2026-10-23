@@ -453,14 +453,9 @@ async def _process_message(
         if existing:
             logger.info("Duplicate found (listing %d), updating", existing.id)
             existing.last_seen_at = now
-            # A later email can restore a bare or expired authenticated link.
-            # Do not replace a different provider's URL on a cross-source match.
-            if (
-                existing.source == source
-                and extracted.source_id
-                and existing.source_id == extracted.source_id
-            ):
-                existing.external_url = extracted.external_url
+            # Keep the latest usable link, including when the property is
+            # republished under a different ID or on another provider.
+            existing.external_url = extracted.external_url
             if extracted.price and extracted.price != existing.price:
                 db.add(PriceHistory(listing_id=existing.id, price=extracted.price))
                 existing.price = extracted.price
@@ -478,7 +473,6 @@ async def _process_message(
                 "city",
                 "district",
                 "location_detail",
-                "external_url",
                 "source_id",
                 "contact_phone",
                 "agency_name",
