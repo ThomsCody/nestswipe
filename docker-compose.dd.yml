@@ -19,6 +19,8 @@ services:
       DD_ENV: local
       DD_VERSION: dev
       DD_TRACE_ENABLED: "true"
+      DD_DBM_PROPAGATION_MODE: full
+      DD_PSYCOPG_SERVICE: nestswipe-db
       DD_LOGS_INJECTION: "true"
       DD_LLMOBS_ENABLED: "true"
       DD_LLMOBS_ML_APP: ${DD_LLMOBS_ML_APP:-nestswipe}

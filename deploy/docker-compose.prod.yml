@@ -62,7 +62,7 @@ services:
       context: ../backend
       target: prod
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       MINIO_ENDPOINT: minio:9000
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
@@ -85,6 +85,8 @@ services:
       DD_ENV: prod
       DD_VERSION: ${DD_VERSION:-latest}
       DD_TRACE_ENABLED: "true"
+      DD_DBM_PROPAGATION_MODE: full
+      DD_PSYCOPG_SERVICE: nestswipe-db
       DD_LOGS_INJECTION: "true"
       DD_IAST_ENABLED: "true"
       DD_PROFILING_ENABLED: "true"

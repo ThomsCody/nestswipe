@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     # Database
     database_url: str = (
-        "postgresql+asyncpg://rosen:rosen_secret@postgres:5432/nestswipe"
+        "postgresql+psycopg://rosen:rosen_secret@postgres:5432/nestswipe"
     )
 
     # MinIO

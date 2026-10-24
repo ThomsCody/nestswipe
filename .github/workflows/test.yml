@@ -9,6 +9,20 @@ on:
 jobs:
   backend-tests:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: dbm_test
+          POSTGRES_PASSWORD: dbm_test
+          POSTGRES_DB: nestswipe_dbm_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dbm_test -d nestswipe_dbm_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -27,6 +41,7 @@ jobs:
         working-directory: backend
         env:
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          TEST_POSTGRES_URL: "postgresql+psycopg://dbm_test:dbm_test@localhost:5432/nestswipe_dbm_test"
           JWT_SECRET: "test-secret-key"
           MINIO_ENDPOINT: "localhost:9000"
           MINIO_ROOT_USER: "test"
