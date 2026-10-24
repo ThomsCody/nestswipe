@@ -7,6 +7,7 @@ REMOTE_DIR="/home/ubuntu/nestswipe"
 echo "==> Syncing project to ${SERVER}:${REMOTE_DIR} ..."
 rsync -avz --delete \
   --exclude '.git' \
+  --exclude '/backups/' \
   --exclude 'node_modules' \
   --exclude '__pycache__' \
   --exclude '.venv' \

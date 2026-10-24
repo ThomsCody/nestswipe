@@ -13,6 +13,14 @@ if [ ! -f oauth.json ]; then
   exit 1
 fi
 
+echo "==> Installing backup scripts and schedule ..."
+sudo -n bash backup/install-production.sh
+
+# Prevent the scheduled backup from stopping containers during a deployment.
+# Downloads also take a shared lock and can continue during deployment.
+exec 9< /home/ubuntu/nestswipe-backups/.backup.lock
+flock -s -w 300 9 || { echo "ERROR: backup is still running; retry deployment later."; exit 1; }
+
 echo "==> Building containers ..."
 docker compose -f docker-compose.prod.yml build
 

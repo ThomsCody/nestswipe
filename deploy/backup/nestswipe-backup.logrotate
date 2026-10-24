@@ -1,0 +1,10 @@
+/var/log/nestswipe-backup.log {
+    su root root
+    weekly
+    rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0600 root root
+}
