@@ -6,6 +6,7 @@ import type { Listing, Comment, PriceHistoryEntry } from "@/types";
 import ListingDetailView, { ContactForm, CommentsSection } from "@/components/ListingDetailView";
 import type { HouseholdMember } from "@/components/ListingDetailView";
 import ErrorBox from "@/components/ErrorBox";
+import OfferSection from "@/components/OfferSection";
 
 interface FavoriteOwner {
   id: number;
@@ -26,6 +27,8 @@ interface FavoriteDetailData {
   status: string;
   owner: FavoriteOwner | null;
   created_at: string;
+  offer_price: string | null;
+  renovation_budget: string | null;
 }
 
 interface HouseholdData {
@@ -85,7 +88,10 @@ export default function FavoriteDetail() {
       setStatus(data.status);
       setOwnerId(data.owner?.id != null ? String(data.owner.id) : "");
     }
-  }, [data]);
+  // Saving an offer must not overwrite unsaved contact/follow-up edits.
+  }, [data?.id, data?.visit_date, data?.location, data?.seller_name, data?.seller_phone,
+    data?.seller_is_agency, data?.listing.agent_name, data?.listing.agency_name,
+    data?.listing.contact_phone, data?.status, data?.owner?.id]);
 
   const updateMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
@@ -147,6 +153,7 @@ export default function FavoriteDetail() {
       backLabel="Back to favorites"
       backTo="/favorites"
       managementPanel={
+        <>
         <div className="p-5 sm:p-6">
           <div>
             <h2 className="text-lg font-semibold text-gray-950">Favorite follow-up</h2>
@@ -216,6 +223,13 @@ export default function FavoriteDetail() {
             {updateMutation.isPending ? "Saving..." : "Save changes"}
           </button>
         </div>
+        <OfferSection
+          key={data.id}
+          favoriteId={data.id}
+          offerPrice={data.offer_price ?? null}
+          renovationBudget={data.renovation_budget ?? null}
+        />
+        </>
       }
       commentsSection={
         <CommentsSection

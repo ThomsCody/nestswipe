@@ -2,7 +2,7 @@
   "name": "Nestswipe: scheduled listing access check failed",
   "type": "query alert",
   "query": "max(last_4h):min:nestswipe.listing_probe.healthy{service:nestswipe-backend,env:prod,!listing_source:leboncoin} by {listing_source}.fill(null) < 1",
-  "message": "{{#is_alert}}No scheduled listing check succeeded for {{listing_source.name}} in the last 4 hours. Every 10 minutes the production scraper checks a recent listing using the normal proxy and browser fallback. HTTP 404/410 responses try up to three recent adverts; no usable target is also a failure requiring investigation. Check the backend probe result and scraper diagnostics.{{/is_alert}}\n\n{{#is_no_data}}No scheduled check has reported in the last 4 hours for {{listing_source.name}}. Check the scheduler, Datadog Agent and metric emission.{{/is_no_data}}\n\n{{#is_recovery}}A scheduled access check succeeded again for {{listing_source.name}}.{{/is_recovery}}\n\nThis checks page access, not photo storage or LLM extraction. No listing is imported or modified.",
+  "message": "Retired: synthetic provider checks are disabled. Provider failure notifications now use the real-email listing access failure monitor. Do not enable scheduled listing tests.",
   "tags": [
     "service:nestswipe-backend",
     "env:prod",
@@ -15,13 +15,11 @@
       "critical": 1
     },
     "include_tags": true,
-    "on_missing_data": "show_and_notify_no_data",
+    "on_missing_data": "resolve",
     "require_full_window": false,
     "new_group_delay": 14400,
-    "renotify_interval": 60,
-    "renotify_statuses": [
-      "alert",
-      "no data"
-    ]
-  }
+    "renotify_interval": 0
+  },
+  "retired": true,
+  "notification_enabled": false
 }

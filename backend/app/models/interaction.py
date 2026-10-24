@@ -1,8 +1,19 @@
 import enum
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -26,9 +37,15 @@ class SwipeAction(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    listing_id: Mapped[int] = mapped_column(ForeignKey("listings.id", ondelete="CASCADE"), index=True)
-    action: Mapped[SwipeDirection] = mapped_column(Enum(SwipeDirection, values_callable=lambda e: [x.value for x in e]))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    listing_id: Mapped[int] = mapped_column(
+        ForeignKey("listings.id", ondelete="CASCADE"), index=True
+    )
+    action: Mapped[SwipeDirection] = mapped_column(
+        Enum(SwipeDirection, values_callable=lambda e: [x.value for x in e])
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
     listing: Mapped["Listing"] = relationship()  # noqa: F821
 
@@ -39,32 +56,52 @@ class Favorite(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     household_id: Mapped[int] = mapped_column(ForeignKey("households.id"), index=True)
-    listing_id: Mapped[int] = mapped_column(ForeignKey("listings.id", ondelete="CASCADE"), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    visit_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    listing_id: Mapped[int] = mapped_column(
+        ForeignKey("listings.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    visit_date: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     location: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     seller_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     seller_phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    seller_is_agency: Mapped[Optional[bool]] = mapped_column(Boolean, server_default="false", nullable=True)
+    seller_is_agency: Mapped[Optional[bool]] = mapped_column(
+        Boolean, server_default="false", nullable=True
+    )
     status: Mapped[FavoriteStatus] = mapped_column(
         Enum(FavoriteStatus, values_callable=lambda e: [x.value for x in e]),
         server_default="to_contact",
     )
-    owner_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    offer_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    renovation_budget: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
 
     listing: Mapped["Listing"] = relationship()  # noqa: F821
     owner: Mapped[Optional["User"]] = relationship()  # noqa: F821
-    comments: Mapped[list["Comment"]] = relationship(back_populates="favorite", cascade="all, delete-orphan")
+    comments: Mapped[list["Comment"]] = relationship(
+        back_populates="favorite", cascade="all, delete-orphan"
+    )
 
 
 class Comment(Base):
     __tablename__ = "comments"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    favorite_id: Mapped[int] = mapped_column(ForeignKey("favorites.id", ondelete="CASCADE"), index=True)
+    favorite_id: Mapped[int] = mapped_column(
+        ForeignKey("favorites.id", ondelete="CASCADE"), index=True
+    )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     body: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
     favorite: Mapped[Favorite] = relationship(back_populates="comments")
     user: Mapped["User"] = relationship()  # noqa: F821

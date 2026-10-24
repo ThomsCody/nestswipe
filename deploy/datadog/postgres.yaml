@@ -1,0 +1,19 @@
+ad_identifiers:
+  - postgres
+init_config: {}
+instances:
+  - dbm: true
+    host: "%%host%%"
+    port: 5432
+    username: datadog
+    password: "%%env_DD_POSTGRES_PASSWORD%%"
+    dbname: "%%env_DD_POSTGRES_DB%%"
+    reported_hostname: nestswipe-db-prod
+    service: nestswipe-db
+    tags:
+      - env:prod
+      - application:nestswipe
+    collect_schemas:
+      enabled: true
+    relations:
+      - relation_regex: .*

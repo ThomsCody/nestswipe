@@ -255,9 +255,11 @@ async def _parse_message(
     seen_source_ids: set[str] = set()
     seen_resolved_urls: set[str] = set()
 
-    for url in candidate_urls:
+    # Exact repeats within one email cannot add information. Deduplicate before
+    # paid network access, including failed attempts; preserve distinct auth URLs.
+    for url in dict.fromkeys(candidate_urls):
         # Step 2: Scrape listing page → resolved URL, source_id, photos, page text
-        scraped = await scrape_listing(url, source)
+        scraped = await scrape_listing(url, source, purpose="email")
         if not scraped.resolved_url:
             logger.warning(
                 "extraction_failed: no valid resolved page",

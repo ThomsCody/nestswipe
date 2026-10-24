@@ -81,6 +81,43 @@ async def test_successful_scrape_does_not_start_browser(configured, renderer):
     renderer.post.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "source,url,source_id",
+    [
+        ("seloger", URL, "267446L6C3DU"),
+        (
+            "leboncoin",
+            "https://www.leboncoin.fr/ad/ventes_immobilieres/123456789",
+            "123456789",
+        ),
+    ],
+)
+@pytest.mark.parametrize("blocked", [False, True])
+async def test_paid_proxy_skips_homepage_but_preserves_browser_fallback(
+    configured, renderer, monkeypatch, source, url, source_id, blocked
+):
+    monkeypatch.setattr(scraper.settings, "proxy_host", "proxy.test:7000")
+    monkeypatch.setattr(scraper.settings, "proxy_user", "test")
+    monkeypatch.setattr(scraper.settings, "proxy_password", "test")
+    listing = (
+        response(403, "Please enable JS", url=url, headers={"x-datadome": "protected"})
+        if blocked
+        else response(url=url)
+    )
+    http = session(listing)
+    renderer.post.return_value = httpx.Response(
+        200,
+        json={"url": url, "html": PAGE},
+        request=httpx.Request("POST", "http://browser/render"),
+    )
+    with patch.object(scraper, "AsyncSession", return_value=http):
+        result = await scraper.scrape_listing(url, source)
+    assert result.page_text and result.source_id == source_id
+    assert http.get.await_count == 1
+    assert http.get.await_args.args[0] == url
+    assert renderer.post.await_count == int(blocked)
+
+
 async def test_fallback_is_disabled_without_endpoint(monkeypatch, renderer):
     monkeypatch.setattr(scraper.settings, "seloger_browser_url", "")
     assert await scraper._scrape_seloger_browser(URL) is None
@@ -160,6 +197,58 @@ async def test_public_listing_query_parameters_are_removed(configured, renderer)
         "http://browser:8000/render", json={"url": URL}
     )
     assert result.resolved_url == URL
+
+
+async def test_browser_failure_preserves_only_bounded_diagnostic_fields(
+    configured, renderer, caplog
+):
+    renderer.post.return_value = httpx.Response(
+        502,
+        json={
+            "detail": {
+                "diagnostic_id": "a" * 32,
+                "stage": "challenge_wait",
+                "challenge": "datadome_captcha",
+                "title": "private-token",
+                "message": "private-token",
+            }
+        },
+        request=httpx.Request("POST", "http://browser:8000/render"),
+    )
+    url = "https://www.bellesdemeures.com/annonces/123/"
+    assert await scraper._scrape_browser(url, "seloger") is None
+    record = next(
+        r
+        for r in caplog.records
+        if getattr(r, "event", None) == "browser_render_failed"
+    )
+    assert record.diagnostic_id == "a" * 32
+    assert record.browser_stage == "challenge_wait"
+    assert record.challenge == "datadome_captcha"
+    assert record.listing_source == "bellesdemeures"
+    assert "private-token" not in str(record.__dict__)
+
+
+@pytest.mark.parametrize("status", [404, 410])
+async def test_browser_removal_after_initial_challenge_stays_unavailable(
+    configured, renderer, caplog, status
+):
+    renderer.post.return_value = httpx.Response(
+        200,
+        json={"url": URL, "html": "", "unavailable": True, "http_status": status},
+        request=httpx.Request("POST", "http://browser:8000/render"),
+    )
+    challenge = response(403, "Please enable JS", headers={"x-datadome": "protected"})
+    with patch.object(
+        scraper, "AsyncSession", return_value=session(response(), challenge)
+    ):
+        result = await scraper.scrape_listing(URL, "seloger", purpose="probe")
+    assert result.unavailable
+    assert not result.page_text
+    assert not any(
+        getattr(record, "event", None) == "listing_access_failed"
+        for record in caplog.records
+    )
 
 
 @pytest.mark.parametrize(
@@ -264,6 +353,7 @@ async def test_empty_success_response_triggers_access_alert(configured, caplog):
 
 PROVIDER_URLS = [
     ("pap", "https://www.pap.fr/annonces/appartement-paris-r464700536", "464700536"),
+    ("pap", "https://www.pap.fr/annonces/-r465701919", "465701919"),
     (
         "leboncoin",
         "https://www.leboncoin.fr/ad/ventes_immobilieres/3183368834",

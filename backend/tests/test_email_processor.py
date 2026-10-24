@@ -231,6 +231,42 @@ class TestProcessEmailsForUser:
             "remaining_emails": 0,
         }
 
+    @pytest.mark.parametrize("failed", [False, True])
+    async def test_duplicate_email_urls_are_scraped_only_once(
+        self, db_session, test_user, failed
+    ):
+        test_user.gmail_refresh_token = "test-refresh-token"
+        test_user.openai_api_key = "sk-test-key"
+        url = FAKE_SCRAPED.resolved_url
+        with ExitStack() as stack:
+            _apply_all_patches(stack)
+            stack.enter_context(
+                patch(
+                    f"{_M}.extract_listing_urls",
+                    AsyncMock(return_value=([url, url], 8, 2)),
+                )
+            )
+            scrape = stack.enter_context(
+                patch(
+                    f"{_M}.scrape_listing",
+                    AsyncMock(
+                        return_value=ScrapedListing() if failed else FAKE_SCRAPED
+                    ),
+                )
+            )
+            await process_emails_for_user(test_user, db_session)
+        scrape.assert_awaited_once_with(url, "seloger", purpose="email")
+
+    async def test_no_new_emails_never_requests_provider(self, db_session, test_user):
+        test_user.gmail_refresh_token = "test-refresh-token"
+        test_user.openai_api_key = "sk-test-key"
+        with ExitStack() as stack:
+            _apply_all_patches(stack)
+            stack.enter_context(patch(f"{_M}._gmail_list_messages", return_value=[]))
+            scrape = stack.enter_context(patch(f"{_M}.scrape_listing", AsyncMock()))
+            assert await process_emails_for_user(test_user, db_session) == 0
+        scrape.assert_not_awaited()
+
     @pytest.mark.parametrize(
         "last_poll", [None, datetime(2026, 10, 13, tzinfo=timezone.utc)]
     )
@@ -273,7 +309,7 @@ class TestProcessEmailsForUser:
 
         assert "from:bellesdemeures.com" in list_messages.call_args.args[1].split()
         assert extract_urls.await_args.args[2] == "seloger"
-        scrape.assert_awaited_once_with(url, "seloger")
+        scrape.assert_awaited_once_with(url, "seloger", purpose="email")
         listing = (await db_session.execute(select(Listing))).scalar_one()
         assert listing.source == "seloger"
         assert listing.source_id == "256203535"

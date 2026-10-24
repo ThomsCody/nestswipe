@@ -14,10 +14,7 @@ rsync -avz --delete \
   --exclude 'venv' \
   --exclude '*.pyc' \
   --exclude 'frontend/dist' \
-  --exclude 'infra/.terraform' \
-  --exclude 'infra/*.tfstate' \
-  --exclude 'infra/*.tfstate.*' \
-  --exclude 'infra/*.tfvars' \
+  --exclude '/infra/' \
   --exclude 'deploy/.env' \
   --exclude 'deploy/oauth.json' \
   --exclude '.env' \
@@ -25,5 +22,5 @@ rsync -avz --delete \
   --exclude '.DS_Store' \
   ./ "${SERVER}:${REMOTE_DIR}/"
 
-echo "==> Running remote deployment ..."
+echo "==> Checking host monitoring and deploying application containers ..."
 ssh "${SERVER}" 'sg docker -c "bash /home/ubuntu/nestswipe/deploy/remote-deploy.sh"'

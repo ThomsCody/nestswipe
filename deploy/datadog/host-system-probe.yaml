@@ -1,0 +1,4 @@
+system_probe_config:
+  enabled: true
+network_config:
+  enabled: true

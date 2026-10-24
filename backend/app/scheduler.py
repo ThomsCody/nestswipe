@@ -7,9 +7,9 @@ from sqlalchemy import func, select
 from app.config import settings
 from app.database import async_session
 from app.models.user import User
+from app.services.decodo_metrics import collect_decodo_usage
 from app.services.email_processor import process_emails_for_user
 from app.services.photo_cleanup import cleanup_stale_photos
-from app.services.listing_probe import PROBE_INTERVAL_MINUTES, run_listing_probes
 
 logger = logging.getLogger(__name__)
 
@@ -79,13 +79,16 @@ async def start_scheduler():
         id="photo_cleanup",
         replace_existing=True,
     )
-    if settings.listing_probes_enabled:
+    # Provider monitoring observes real email requests only. Never schedule
+    # synthetic listing requests, including when a legacy deployment enables them.
+    if settings.decodo_api_key.get_secret_value():
+        # Account reporting only: no requests to listings or residential proxies.
         scheduler.add_job(
-            run_listing_probes,
+            collect_decodo_usage,
             "interval",
-            minutes=PROBE_INTERVAL_MINUTES,
+            minutes=15,
             next_run_time=now + timedelta(seconds=30),
-            id="listing_probes",
+            id="decodo_usage",
             replace_existing=True,
             max_instances=1,
             coalesce=True,

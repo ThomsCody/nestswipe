@@ -182,6 +182,8 @@ async def get_favorite(
         seller_name=fav.seller_name,
         seller_phone=fav.seller_phone,
         seller_is_agency=fav.seller_is_agency,
+        offer_price=fav.offer_price,
+        renovation_budget=fav.renovation_budget,
         status=fav.status.value,
         owner=FavoriteOwner(
             id=fav.owner.id, name=fav.owner.name, picture=fav.owner.picture
@@ -228,6 +230,10 @@ async def update_favorite(
         fav.seller_is_agency = body.seller_is_agency
     if body.status is not None:
         fav.status = FavoriteStatus(body.status)
+    if "offer_price" in body.model_fields_set:
+        fav.offer_price = body.offer_price
+    if "renovation_budget" in body.model_fields_set:
+        fav.renovation_budget = body.renovation_budget
 
     # Handle owner assignment + notification
     new_owner_id = None
@@ -289,6 +295,8 @@ async def update_favorite(
         seller_name=fav.seller_name,
         seller_phone=fav.seller_phone,
         seller_is_agency=fav.seller_is_agency,
+        offer_price=fav.offer_price,
+        renovation_budget=fav.renovation_budget,
         status=fav.status.value,
         owner=FavoriteOwner(
             id=fav.owner.id, name=fav.owner.name, picture=fav.owner.picture

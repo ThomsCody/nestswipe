@@ -1,8 +1,8 @@
 {
   "name": "Nestswipe: listing access failures (metrics)",
   "type": "query alert",
-  "query": "sum(last_15m):sum:nestswipe.listing_access.failure{service:nestswipe-backend,env:prod,purpose:import,!listing_source:leboncoin}.as_count() > 0",
-  "message": "Diagnostic monitor only; notifications are disabled. Source outage notifications come from the scheduled check monitor after four hours without success.\n\n{{#is_alert}}A real listing import failed after retries and browser fallback. The dedicated failure counter triggered this alert; logs are only for diagnosis. Inspect listing_source, reason and http_status in backend logs and check the proxy and seloger-browser service.{{/is_alert}}\n\n{{#is_recovery}}No final import access failures were recorded in the last 15 minutes. Consult the scheduled probe monitors for active provider health.{{/is_recovery}}\n\nCovers email and manual imports except Leboncoin. HTTP 404/410 removals and recovered browser challenges are excluded. Photo and LLM failures are outside this alert. After fixing an outage, replay affected emails with backend/scripts/reprocess_emails.py using a bounded time window or specific email IDs.",
+  "query": "sum(last_15m):sum:nestswipe.listing_access.failure{service:nestswipe-backend,env:prod,purpose:email} by {listing_source}.as_count() > 0",
+  "message": "{{#is_alert}}A listing from a real email failed to load for {{listing_source.name}} after normal retries and browser fallback. Inspect the corresponding parse attempt and backend listing_access_failed/browser_render_failed diagnostics.{{/is_alert}}\n\n{{#is_recovery}}No final email listing access failures were recorded in the last 15 minutes. A quiet period does not prove provider recovery.{{/is_recovery}}\n\nPassive monitoring only: no scheduled provider requests. Manual imports and diagnostic probes do not trigger this alert. HTTP 404/410 removals and recovered browser challenges are excluded. Photo and LLM failures are outside this alert. No new emails means no alert; do not send test requests to check recovery.",
   "tags": [
     "service:nestswipe-backend",
     "env:prod",
@@ -17,7 +17,8 @@
     "include_tags": true,
     "on_missing_data": "resolve",
     "require_full_window": false,
-    "renotify_interval": 0
+    "renotify_interval": 0,
+    "new_group_delay": 0
   },
-  "notification_enabled": false
+  "notification_enabled": true
 }

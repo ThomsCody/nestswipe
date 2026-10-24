@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from decimal import Decimal
+
+from pydantic import BaseModel, Field, field_serializer
 
 from app.schemas.listing import ListingResponse
 
@@ -46,6 +48,12 @@ class FavoriteDetailResponse(BaseModel):
     status: str
     owner: FavoriteOwner | None
     created_at: str
+    offer_price: Decimal | None = None
+    renovation_budget: Decimal | None = None
+
+    @field_serializer("offer_price", "renovation_budget")
+    def serialize_money(self, value: Decimal | None) -> str | None:
+        return format(value, ".2f") if value is not None else None
 
     model_config = {"from_attributes": True}
 
@@ -58,6 +66,12 @@ class FavoriteUpdateRequest(BaseModel):
     seller_is_agency: bool | None = None
     status: str | None = None
     owner_id: int | None = None
+    offer_price: Decimal | None = Field(
+        default=None, gt=0, max_digits=12, decimal_places=2
+    )
+    renovation_budget: Decimal | None = Field(
+        default=None, ge=0, max_digits=12, decimal_places=2
+    )
 
 
 class CommentCreateRequest(BaseModel):

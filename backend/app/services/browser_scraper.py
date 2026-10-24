@@ -465,7 +465,8 @@ def _browser_listing_url(url: str, source: str, *, tracking: bool = False) -> bo
                 or re.fullmatch(r"/\d+/detail\.htm", parsed.path)
             )
         if source == "pap":
-            return bool(re.fullmatch(r"/annonces?/[^/]+-[rg]\d+/?", parsed.path))
+            # PAP emails also use ID-only links such as /annonces/-r465701919.
+            return bool(re.fullmatch(r"/annonces?/[^/]*-[rg]\d+/?", parsed.path))
         if source == "leboncoin":
             return bool(
                 re.fullmatch(
@@ -503,9 +504,22 @@ async def _scrape_browser(url: str, source: str) -> ScrapedListing | None:
             )
             response.raise_for_status()
         data = response.json()
-        html = data["html"]
         final_url = data["url"]
-        if not _browser_listing_url(final_url, source) or _is_challenge_html(html):
+        if not _browser_listing_url(final_url, source):
+            return None
+        if data.get("unavailable") is True and data.get("http_status") in {404, 410}:
+            logger.info(
+                "Rendered listing unavailable: source=%s http_status=%s",
+                listing_metrics.access_source(source, final_url),
+                data["http_status"],
+            )
+            return ScrapedListing(
+                resolved_url=_clean_url(final_url),
+                source_id=_extract_source_id(final_url, source),
+                unavailable=True,
+            )
+        html = data["html"]
+        if _is_challenge_html(html):
             return None
         page_text = _extract_page_text(html)
         if not page_text:
@@ -534,10 +548,44 @@ async def _scrape_browser(url: str, source: str) -> ScrapedListing | None:
         )
     except Exception as exc:
         # Proxy exceptions may embed credentials; never log their message/traceback.
+        diagnostic = {}
+        if isinstance(exc, httpx.HTTPStatusError):
+            try:
+                detail = exc.response.json().get("detail", {})
+                identifier = detail.get("diagnostic_id")
+                if isinstance(identifier, str) and re.fullmatch(
+                    r"[a-f0-9]{32}", identifier
+                ):
+                    diagnostic["diagnostic_id"] = identifier
+                if detail.get("stage") in {
+                    "queue",
+                    "browser_start",
+                    "page_open",
+                    "navigation",
+                    "challenge_wait",
+                    "page_content",
+                }:
+                    diagnostic["browser_stage"] = detail["stage"]
+                if detail.get("challenge") in {
+                    "unknown",
+                    "none",
+                    "datadome_captcha",
+                    "datadome_device_check",
+                    "cloudflare",
+                }:
+                    diagnostic["challenge"] = detail["challenge"]
+            except (ValueError, TypeError, AttributeError):
+                pass
         logger.warning(
             "Rendered fallback failed: source=%s error_type=%s",
             source,
             type(exc).__name__,
+            extra={
+                "event": "browser_render_failed",
+                "listing_source": listing_metrics.access_source(source, url),
+                "listing_host": parsed.hostname,
+                **diagnostic,
+            },
         )
         return None
 
@@ -546,11 +594,12 @@ async def scrape_listing(
     tracking_url: str, source: str, *, purpose: str = "import"
 ) -> ScrapedListing:
     """Measure the final outcome once, including retries and browser recovery."""
-    listing_metrics.scrape_attempt(source, purpose)
+    metric_source = listing_metrics.access_source(source, tracking_url)
+    listing_metrics.scrape_attempt(metric_source, purpose)
     try:
         result = await _scrape_listing(tracking_url, source)
     except Exception:
-        listing_metrics.scrape_outcome(source, purpose, "failure")
+        listing_metrics.scrape_outcome(metric_source, purpose, "failure")
         raise
     outcome = (
         "success"
@@ -559,7 +608,7 @@ async def scrape_listing(
         if result.unavailable
         else "failure"
     )
-    listing_metrics.scrape_outcome(source, purpose, outcome)
+    listing_metrics.scrape_outcome(metric_source, purpose, outcome)
     return result
 
 
@@ -581,9 +630,11 @@ async def _scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
 
     try:
         async with AsyncSession(impersonate="chrome", proxy=proxy) as session:
-            # Warm up: visit the homepage to establish cookies/trust score
+            # A paid homepage fetch cannot execute a JavaScript challenge and
+            # duplicates traffic before every listing. Fetch the listing first;
+            # retain the existing browser fallback when access is blocked.
             warmup_url = WARMUP_URLS.get(source)
-            if warmup_url:
+            if warmup_url and not use_proxy:
                 try:
                     await session.get(
                         warmup_url,
@@ -716,7 +767,9 @@ async def _scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
             event,
             extra={
                 "event": event,
-                "listing_source": source,
+                "listing_source": listing_metrics.access_source(
+                    source, result.resolved_url or tracking_url
+                ),
                 "listing_host": urlparse(result.resolved_url or tracking_url).hostname,
                 "reason": failure_reason,
                 "http_status": http_status,

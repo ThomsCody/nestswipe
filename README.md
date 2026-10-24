@@ -122,7 +122,11 @@ The production stack (`deploy/docker-compose.prod.yml`) includes:
 - **MinIO** — photo storage
 - **Backend** — FastAPI with ddtrace APM instrumentation
 - **Frontend** — static build served by Caddy
-- **Datadog Agent** — logs, APM traces, network performance monitoring
+
+The **Datadog Agent** runs as a host service, managed through Fleet Automation.
+It collects container logs, APM traces, custom metrics, network performance,
+and PostgreSQL database monitoring. Application containers connect through
+local Unix sockets. See [host Agent setup](deploy/datadog/HOST_AGENT.md).
 
 ## Proxy configuration (optional)
 
@@ -176,40 +180,55 @@ the contract; `test_listing_monitoring.py` protects names, tags, final outcomes,
 the UDP wire format, scheduling and monitor queries. No application key is
 needed in production. No URLs, listing IDs or user identifiers are metric tags.
 
+Provider monitoring is passive: the scheduler never requests listings for health
+checks, including when the legacy `LISTING_PROBES_ENABLED` setting is enabled.
+Providers are contacted only for actual email processing or user-requested work.
+
 The scraper emits `nestswipe.listing_access.attempts` and final `success`,
-`failure`, `unavailable` counters, tagged by `listing_source` and
-`purpose:import|probe`. Browser recovery counts as one success, not a failure.
-HTTP 404/410 removals are separate. Real email/manual import failures are tracked
-in a diagnostic monitor over a 15-minute window, with notifications disabled.
-Structured `listing_access_failed` logs remain available for diagnosis only.
+`failure`, `unavailable` counters, tagged by `listing_source` and purpose.
+Email processing uses `purpose:email`; manual imports use `purpose:import`.
+Only final access failures from real emails trigger provider notifications,
+grouped by provider over a 15-minute window. No new emails or missing metrics
+means no alert. A quiet window is not proof of provider recovery. Browser
+recovery counts as success; HTTP 404/410 removals remain separate. Photo and LLM
+failures are outside this access monitor. Monitoring generates no provider traffic,
+including for Leboncoin, whose real email failures are also covered.
 
-Production also runs a bounded check every 10 minutes for SeLoger, PAP,
-Consultants Immobilier, Barnes and Junot. Leboncoin is excluded from scheduled
-checks and access alerts to avoid paid monitoring requests. Its import metrics
-remain available, with their original source tag. Each enabled check uses the actual scraper
-(including proxy/browser fallback) on recent database listing URLs; removed
-adverts try up to three distinct candidates. No usable candidate is an explicit
-failed check, not a claim that the provider is down. Checks do not call the LLM,
-download photos, import or modify listings. Each provider is limited to four
-minutes; batches cannot overlap. Set `LISTING_PROBES_ENABLED=false` to disable
-locally (the default); production enables it in Compose.
+SeLoger and Belles Demeures retain independent metric groups while both keep
+`source=seloger` in the database and share the scraper implementation.
 
-`nestswipe.listing_probe.healthy` is 1/0 for each provider. The provider monitor
-notifies only after four hours without a successful check, or four hours without
-results. Any successful check resets the outage window. New provider groups also
-wait four hours before evaluation. The separate
-`nestswipe.listing_probe.completed` heartbeat is emitted only after every provider
-finishes; no completed batch for four hours alerts on a stopped scheduler, backend,
-database failure or missing telemetry. Both successful and failed batches emit
-completion. Alerts remind hourly. Recovery of the import counter means a quiet
-15-minute window; probe recovery requires a successful check. These checks verify
-page access, not semantic extraction, photos or
-the Gmail polling job. Unknown HTTP-200 interstitials can still need scraper fixes.
+Paid-proxy scrapes start with the listing URL, without a separate homepage
+warm-up. The existing browser fallback remains available for blocked requests.
+Repeated identical URLs within one email are fetched only once; distinct
+authenticated URLs and later emails are still processed normally.
+The browser blocks known advertising/analytics hosts as well as ordinary images,
+media and fonts. Listing scripts, styles, APIs and anti-bot resources stay allowed.
+Service workers are disabled so they cannot bypass resource filtering, following
+[Playwright's routing guidance](https://playwright.dev/python/docs/api/class-page#page-route).
+Photo downloads remain direct. Savings depend on actual email traffic and must
+be measured in Decodo; these controls do not impose a hard bandwidth cap.
 
-Both access monitor definitions exclude `listing_source:leboncoin`. The existing
-email extraction log monitor (267843155) also excludes `@source:leboncoin` from
-its search and has no notification recipients or renotifications. Keep it diagnostic
-only: isolated import failures do not establish a four-hour provider outage.
+Browser failures emit a `browser_render_failed` JSON event under service
+`nestswipe-browser`: host, failure stage (queue, startup, navigation, challenge
+wait or page content), last navigation status, challenge classification, timing
+and a random diagnostic ID. The backend logs the same ID when the renderer
+returns it. No exception messages, URLs, cookies or page titles enter these
+diagnostic logs. An unknown challenge means inspection could not classify it;
+it is not evidence that the page was accessible.
+
+Failure screenshots and a JSON summary with a redacted page title stay privately
+inside the browser container's persistent volume at `/data/profile/diagnostics`.
+There is no HTTP endpoint for these files. Artifacts use directory/file modes
+700/600, retain at most five captures per host, and expire after 48 hours (purged
+on the next failure). Screenshots are viewport-only and capped at 2 MiB each;
+capture adds at most four seconds and failures do not replace the scrape error.
+Inspect a correlated `<host>-<diagnostic_id>.json`/`.png` pair through production
+SSH when investigating; do not commit or publish these artifacts.
+
+The old scheduled access and probe-heartbeat monitor definitions are marked
+`retired`. Publishing removes their notification recipients, resolves missing
+data and mutes existing monitors indefinitely without recreating absent ones.
+The existing email extraction log monitor (267843155) remains diagnostic only.
 
 Use credentials for the personal **ThomasDogFooding** organization, not a work
 organization. With `DD_API_KEY`, `DD_APP_KEY`, and `DD_SITE` injected into the
@@ -227,6 +246,31 @@ validates all three definitions before applying, only updates uniquely named
 monitors with `managed_by:nestswipe`, and verifies saved queries, options and
 recipients. The local `notification_enabled: false` setting suppresses recipient
 injection for diagnostic monitors and is stripped before submitting to Datadog.
+
+## Decodo bandwidth metrics
+
+[Production dashboard](https://app.datadoghq.com/dashboard/wth-vyz-429/nestswipe--decodo-usage)
+
+Set `DECODO_API_KEY` in the ignored `deploy/.env` to enable account reporting.
+Every 15 minutes, the backend calls Decodo's traffic statistics API directly
+(two calls, no listing visits and no residential proxy traffic). Measurements
+come from Decodo, including both upload and download; its reporting can lag by
+10–15 minutes. Scope is **all residential usage on this Decodo account**, including
+other applications using the same account, not just Nestswipe.
+
+- `nestswipe.decodo.traffic_bytes`: gauge, tagged `window:24h|30d` and
+  `direction:download|upload|total`.
+- `nestswipe.decodo.requests`: gauge of requests in the same rolling window.
+- `nestswipe.decodo.collection_success`: 1 for a successful poll, 0 on API/schema failure.
+- `nestswipe.decodo.last_success_timestamp`: Unix seconds of the last successful
+  collection, not the upstream reporting timestamp.
+
+All have `provider:decodo`, `proxy_type:residential`, `scope:account`, plus the
+backend service and environment tags. These are rolling totals: **do not sum
+samples over time** or combine `total` with `download`/`upload`. Use `max` across
+hosts, since each collector observes the same account. Failed polls do not emit
+zero bandwidth or refresh the success timestamp. No key means no scheduled job.
+The 30-day metric is not a billing-period balance or remaining-credit estimate.
 
 ## Email notifications (optional)
 

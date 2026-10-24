@@ -39,10 +39,12 @@ def main():
     }:
         parser.error("Unsupported DD_SITE")
     headers = {
-        "DD-API-KEY": os.environ["DD_API_KEY"],
         "DD-APPLICATION-KEY": os.environ["DD_APP_KEY"],
         "Content-Type": "application/json",
     }
+    # dd-auth can supply a personal access token without an API key.
+    if os.environ.get("DD_API_KEY"):
+        headers["DD-API-KEY"] = os.environ["DD_API_KEY"]
 
     def request(method, path, data=None):
         req = Request(
@@ -63,29 +65,31 @@ def main():
     identity = request("GET", "/api/v2/current_user")
     if identity["data"]["relationships"]["org"]["data"]["id"] != args.org_uuid:
         raise SystemExit("Credentials belong to a different Datadog organization.")
-    payloads = [
-        prepare_payload(json.loads(path.read_text()), args.notify)
+    definitions = [
+        json.loads(path.read_text())
         for path in sorted(Path(__file__).parent.glob("*-monitor.json"))
     ]
+    payloads = [prepare_payload(definition, args.notify) for definition in definitions]
     for payload in payloads:
         request("POST", "/api/v1/monitor/validate", payload)
     if not args.apply:
         print("All monitor configurations validated; no monitor was changed.")
         return
-    for payload in payloads:
-        upsert_monitor(request, payload)
+    for definition, payload in zip(definitions, payloads):
+        upsert_monitor(request, payload, retired=definition.get("retired", False))
 
 
 def prepare_payload(definition, notify):
     payload = dict(definition)
+    retired = payload.pop("retired", False)
     # Local publishing policy, not a Datadog API field. Diagnostic monitors
     # retain their state and metrics without sending short-incident emails.
-    if payload.pop("notification_enabled", True):
+    if payload.pop("notification_enabled", True) and not retired:
         payload["message"] += "\n\n" + notify
     return payload
 
 
-def upsert_monitor(request, payload):
+def upsert_monitor(request, payload, *, retired=False):
     matches = [
         monitor
         for monitor in request(
@@ -101,10 +105,15 @@ def upsert_monitor(request, payload):
         raise SystemExit(
             "An unmanaged monitor has this name; refusing to overwrite it."
         )
+    if retired and not matches:
+        print(json.dumps({"name": payload["name"], "state": "retired; not present"}))
+        return
     if matches:
         result = request("PUT", f"/api/v1/monitor/{matches[0]['id']}", payload)
     else:
         result = request("POST", "/api/v1/monitor", payload)
+    if retired:
+        request("POST", f"/api/v1/monitor/{result['id']}/mute", {})
     saved = request("GET", f"/api/v1/monitor/{result['id']}")
     if (
         saved["query"] != payload["query"]
@@ -116,6 +125,11 @@ def upsert_monitor(request, payload):
         )
     ):
         raise SystemExit("Saved monitor does not match the requested configuration.")
+    if (
+        retired
+        and saved.get("options", {}).get("silenced", {}).get("*", False) is not None
+    ):
+        raise SystemExit("Retired monitor was not muted indefinitely.")
     print(
         json.dumps(
             {

@@ -43,6 +43,7 @@ Thumbs.db
 pgdata/
 minio_data/
 browser-profile/
+browser-diagnostics/
 
 # Alembic
 backend/alembic/versions/__pycache__/

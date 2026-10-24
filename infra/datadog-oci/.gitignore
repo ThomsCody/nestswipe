@@ -1,0 +1,12 @@
+.terraform/
+.vendor/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+*.tfplan
+*.log
+override.tf
+*_override.tf
+crash.*
+.env*

@@ -13,6 +13,10 @@ if [ ! -f oauth.json ]; then
   exit 1
 fi
 
+# Agent upgrades and configuration are managed independently through Fleet.
+# Check before touching application containers; never reinstall/reset the Agent.
+bash datadog/check-host-agent.sh
+
 echo "==> Installing backup scripts and schedule ..."
 sudo -n bash backup/install-production.sh
 
@@ -30,6 +34,8 @@ docker compose -f docker-compose.prod.yml run --rm backend \
 
 echo "==> Starting services ..."
 docker compose -f docker-compose.prod.yml up -d
+
+bash datadog/check-host-agent.sh
 
 echo "==> Deployment complete!"
 docker compose -f docker-compose.prod.yml ps

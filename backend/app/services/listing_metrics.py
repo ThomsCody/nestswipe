@@ -7,24 +7,51 @@ Change them together with the contract tests and deployed monitors.
 import logging
 import os
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from datadog import DogStatsd
 
 logger = logging.getLogger(__name__)
 SOURCES = frozenset(
-    {"seloger", "pap", "consultantsimmobilier", "barnes", "junot", "leboncoin"}
+    {
+        "seloger",
+        "bellesdemeures",
+        "pap",
+        "consultantsimmobilier",
+        "barnes",
+        "junot",
+        "leboncoin",
+    }
 )
+
+
+def access_source(source: str, url: str) -> str:
+    """Separate website health without changing stored listing/provider identities."""
+    try:
+        host = urlsplit(url).hostname
+    except ValueError:
+        return source
+    if source == "seloger" and host in {
+        "bellesdemeures.com",
+        "www.bellesdemeures.com",
+        "click.by.bellesdemeures.com",
+    }:
+        return "bellesdemeures"
+    return source
 
 
 @lru_cache(maxsize=1)
 def _client():
     # Development/test runs do not require an Agent or emit production telemetry.
     host = os.getenv("DD_AGENT_HOST")
-    if not host:
+    url = os.getenv("DD_DOGSTATSD_URL", "")
+    socket_path = urlsplit(url).path if url.startswith("unix://") else None
+    if not host and not socket_path:
         return None
     return DogStatsd(
         host=host,
         port=int(os.getenv("DD_DOGSTATSD_PORT", "8125")),
+        socket_path=socket_path,
         constant_tags=[
             "service:" + os.getenv("DD_SERVICE", "nestswipe-backend"),
             "env:" + os.getenv("DD_ENV", "dev"),
@@ -38,7 +65,9 @@ def _emit(name: str, value: int, *, source=None, purpose=None, gauge=False):
     if source is not None:
         tags.append("listing_source:" + (source if source in SOURCES else "other"))
     if purpose is not None:
-        tags.append("purpose:" + ("probe" if purpose == "probe" else "import"))
+        tags.append(
+            "purpose:" + (purpose if purpose in {"email", "probe"} else "import")
+        )
     try:
         client = _client()
         if client is not None:

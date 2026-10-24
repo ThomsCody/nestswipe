@@ -1,0 +1,57 @@
+{
+  "title": "Nestswipe \u2014 Decodo usage",
+  "description": "Provider-reported residential traffic for the entire Decodo account. Polled directly every 15 minutes; upstream reporting may lag 10\u201315 minutes. Download + upload = total. Rolling totals are gauges: do not sum samples or directions. These are not remaining credits or a billing-period balance. No synthetic listing requests. A failed poll emits no bandwidth value. Last successful collection: nestswipe.decodo.last_success_timestamp.",
+  "layout_type": "ordered",
+  "widgets": [
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Last 24 hours \u2014 Decodo reported bytes (rolling total)",
+        "show_legend": true,
+        "requests": [
+          {
+            "q": "max:nestswipe.decodo.traffic_bytes{service:nestswipe-backend,env:prod,provider:decodo,scope:account,window:24h} by {direction}.rollup(max, 900)",
+            "display_type": "line"
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Last 30 days \u2014 Decodo reported bytes (rolling total)",
+        "show_legend": true,
+        "requests": [
+          {
+            "q": "max:nestswipe.decodo.traffic_bytes{service:nestswipe-backend,env:prod,provider:decodo,scope:account,window:30d} by {direction}.rollup(max, 900)",
+            "display_type": "line"
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Requests in the last 24 hours (rolling total)",
+        "requests": [
+          {
+            "q": "max:nestswipe.decodo.requests{service:nestswipe-backend,env:prod,provider:decodo,scope:account,window:24h}.rollup(max, 900)",
+            "display_type": "line"
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Collection status \u2014 1 success, 0 failure; missing points mean no report",
+        "requests": [
+          {
+            "q": "min:nestswipe.decodo.collection_success{service:nestswipe-backend,env:prod,provider:decodo,scope:account}.rollup(min, 900)",
+            "display_type": "bars"
+          }
+        ]
+      }
+    }
+  ]
+}

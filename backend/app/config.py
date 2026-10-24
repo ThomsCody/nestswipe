@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings
 
 
@@ -36,6 +37,8 @@ class Settings(BaseSettings):
     proxy_host: str = ""
     proxy_user: str = ""
     proxy_password: str = ""
+    # Reporting API only; never used as proxy credentials.
+    decodo_api_key: SecretStr = SecretStr("")
 
     # Internal persistent Chromium service; no public port or paid scraping API.
     # Legacy env name; shared renderer handles SeLoger, PAP and Leboncoin.

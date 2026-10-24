@@ -1,0 +1,24 @@
+# Bootstrap defaults. Subsequent application deployments preserve Fleet changes.
+hostname: nestswipe-vnic
+env: prod
+tags:
+  - application:nestswipe
+remote_configuration:
+  enabled: true
+remote_updates: true
+logs_enabled: true
+logs_config:
+  container_collect_all: true
+  docker_container_use_file: false
+apm_config:
+  enabled: true
+  receiver_port: 0
+  receiver_socket: /var/run/datadog/apm.socket
+dogstatsd_port: 0
+dogstatsd_socket: /var/run/datadog/dsd.socket
+dogstatsd_origin_detection: true
+config_providers:
+  - name: docker
+    polling: true
+listeners:
+  - name: docker
