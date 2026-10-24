@@ -20,9 +20,10 @@ interface QueueData {
 interface PollStatus {
   is_polling: boolean;
   started_at: string | null;
+  remaining_emails: number;
 }
 
-function PollingIndicator() {
+function PollingIndicator({ remainingEmails }: { remainingEmails: number }) {
   return (
     <span className="group relative inline-flex items-center align-middle ml-2">
       <svg
@@ -38,8 +39,11 @@ function PollingIndicator() {
           d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
         />
       </svg>
+      <span className="ml-1 text-xs text-indigo-500" aria-live="polite">
+        {remainingEmails} email{remainingEmails === 1 ? "" : "s"} left to parse
+      </span>
       <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs text-white bg-gray-800 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-        Analysing new emails&hellip;
+        Current batch, including the email being processed
       </span>
     </span>
   );
@@ -295,7 +299,7 @@ export default function Swipe() {
             <p className="text-gray-500">No new listings to review. Check back after the next email poll.</p>
             {pollStatus?.is_polling && (
               <p className="mt-3 text-sm text-indigo-500 flex items-center gap-1.5">
-                <PollingIndicator />
+                <PollingIndicator remainingEmails={pollStatus.remaining_emails} />
                 Checking for new listings&hellip;
               </p>
             )}
@@ -309,7 +313,7 @@ export default function Swipe() {
     <div className="flex flex-col items-center py-4">
       <p className="text-sm text-gray-400 mb-4">
         {data?.remaining ?? 0} listing{(data?.remaining ?? 0) !== 1 ? "s" : ""} remaining
-        {pollStatus?.is_polling && <PollingIndicator />}
+        {pollStatus?.is_polling && <PollingIndicator remainingEmails={pollStatus.remaining_emails} />}
         <span className="ml-3 text-xs">(← pass | like →)</span>
       </p>
       <ListingCard

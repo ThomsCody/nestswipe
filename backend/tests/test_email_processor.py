@@ -1,3 +1,4 @@
+import asyncio
 import base64
 from copy import deepcopy
 from contextlib import ExitStack
@@ -9,6 +10,11 @@ import pytest
 from sqlalchemy import select
 
 from app.models.listing import Listing, ListingPhoto
+from app.models.parse_attempt import ParseAttempt
+from app.services.email_processing_state import (
+    get_polling_state,
+    track_email_processing,
+)
 from app.services.browser_scraper import ScrapedListing
 from app.services.duplicate_detector import compute_fingerprint
 from app.services.email_processor import process_emails_for_user
@@ -88,6 +94,143 @@ def _apply_all_patches(stack: ExitStack) -> None:
 
 
 class TestProcessEmailsForUser:
+    async def test_remaining_email_count_excludes_duplicates_and_decreases(
+        self, db_session, test_user
+    ):
+        test_user.gmail_refresh_token = "test-refresh-token"
+        test_user.openai_api_key = "sk-test-key"
+        db_session.add(
+            ParseAttempt(
+                household_id=test_user.household_id,
+                user_id=test_user.id,
+                source="seloger",
+                email_id="old",
+                status="success",
+            )
+        )
+        await db_session.commit()
+        counts = []
+
+        async def extract(*args):
+            counts.append(get_polling_state(test_user.household_id)["remaining_emails"])
+            # No listings found still completes an email and decrements the count.
+            return ([], 8, 2)
+
+        with ExitStack() as stack:
+            _apply_all_patches(stack)
+            stack.enter_context(
+                patch(
+                    f"{_M}._gmail_list_messages",
+                    return_value=[
+                        {"id": "old"},
+                        {"id": "new1"},
+                        {"id": "new1"},
+                        {"id": "new2"},
+                        {"id": "new3"},
+                    ],
+                )
+            )
+            fetch = stack.enter_context(
+                patch(f"{_M}._gmail_get_message", return_value=FAKE_GMAIL_MESSAGE)
+            )
+            stack.enter_context(
+                patch(f"{_M}.extract_listing_urls", side_effect=extract)
+            )
+            await process_emails_for_user(test_user, db_session)
+        assert counts == [3, 2, 1]
+        assert [call.args[1] for call in fetch.call_args_list] == [
+            "new1",
+            "new2",
+            "new3",
+        ]
+        assert get_polling_state(test_user.household_id)["remaining_emails"] == 0
+
+    @pytest.mark.parametrize("scenario", ["empty", "duplicate", "unknown", "no_html"])
+    async def test_no_parsing_keeps_indicator_hidden(
+        self, db_session, test_user, scenario
+    ):
+        test_user.gmail_refresh_token = "test-refresh-token"
+        test_user.openai_api_key = "sk-test-key"
+        if scenario == "duplicate":
+            db_session.add(
+                ParseAttempt(
+                    household_id=test_user.household_id,
+                    user_id=test_user.id,
+                    source="seloger",
+                    email_id="msg1",
+                    status="success",
+                )
+            )
+            await db_session.commit()
+        message = deepcopy(FAKE_GMAIL_MESSAGE)
+        if scenario == "unknown":
+            message["payload"]["headers"][0]["value"] = "someone@example.com"
+        if scenario == "no_html":
+            message["payload"]["body"] = {}
+        with ExitStack() as stack:
+            _apply_all_patches(stack)
+            if scenario == "empty":
+                stack.enter_context(
+                    patch(f"{_M}._gmail_list_messages", return_value=[])
+                )
+            stack.enter_context(patch(f"{_M}._gmail_get_message", return_value=message))
+            tracking = stack.enter_context(
+                patch(f"{_M}.track_email_processing", wraps=track_email_processing)
+            )
+            assert await process_emails_for_user(test_user, db_session) == 0
+            tracking.assert_not_called()
+        assert get_polling_state(test_user.household_id) == {
+            "is_polling": False,
+            "started_at": None,
+            "remaining_emails": 0,
+        }
+
+    @pytest.mark.parametrize("outcome", ["success", "error", "cancelled"])
+    async def test_indicator_tracks_actual_parsing_and_always_clears(
+        self, db_session, test_user, outcome
+    ):
+        test_user.gmail_refresh_token = "test-refresh-token"
+        test_user.openai_api_key = "sk-test-key"
+        household_id = test_user.household_id
+
+        def list_messages(*args):
+            assert not get_polling_state(household_id)["is_polling"]
+            return [{"id": "msg1"}]
+
+        async def extract(*args):
+            state = get_polling_state(household_id)
+            assert state["is_polling"]
+            assert state["remaining_emails"] == 1
+            assert state["started_at"] is not None
+            assert not get_polling_state(household_id + 1)["is_polling"]
+            if outcome == "error":
+                raise RuntimeError("Extraction failed")
+            if outcome == "cancelled":
+                raise asyncio.CancelledError()
+            return ([FAKE_SCRAPED.resolved_url], 8, 2)
+
+        with ExitStack() as stack:
+            _apply_all_patches(stack)
+            stack.enter_context(
+                patch(f"{_M}._gmail_list_messages", side_effect=list_messages)
+            )
+            extraction = stack.enter_context(
+                patch(f"{_M}.extract_listing_urls", side_effect=extract)
+            )
+            if outcome == "cancelled":
+                with pytest.raises(asyncio.CancelledError):
+                    await process_emails_for_user(test_user, db_session)
+            else:
+                assert await process_emails_for_user(test_user, db_session) == (
+                    1 if outcome == "success" else 0
+                )
+            extraction.assert_awaited_once()
+        assert get_polling_state(household_id) == {
+            "is_polling": False,
+            "started_at": None,
+            "remaining_emails": 0,
+        }
+
     @pytest.mark.parametrize(
         "last_poll", [None, datetime(2026, 10, 13, tzinfo=timezone.utc)]
     )

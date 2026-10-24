@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models.interaction import Favorite, SwipeAction, SwipeDirection
 from app.models.listing import Listing, ListingPhoto
 from app.models.user import User
-from app.scheduler import get_polling_state
+from app.services.email_processing_state import get_polling_state
 from app.schemas.listing import (
     ImportUrlRequest,
     ImportUrlResponse,
@@ -25,8 +25,8 @@ router = APIRouter()
 
 
 @router.get("/poll-status")
-async def poll_status():
-    return get_polling_state()
+async def poll_status(user: User = Depends(get_current_user)):
+    return get_polling_state(user.household_id)
 
 
 @router.get("/queue", response_model=QueueResponse)

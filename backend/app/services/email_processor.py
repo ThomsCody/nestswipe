@@ -16,6 +16,7 @@ from app.models.parse_attempt import ParseAttempt
 from app.models.user import User
 from app.services.browser_scraper import scrape_listing, MAX_PHOTOS_PER_LISTING
 from app.services.duplicate_detector import compute_fingerprint, find_duplicate
+from app.services.email_processing_state import track_email_processing
 from app.services.email_url_extractor import extract_listing_urls
 from app.services.llm_extractor import extract_listing_from_page
 from app.services.listing_urls import reusable_listing_url
@@ -127,6 +128,7 @@ async def _process_message(
     msg: dict,
     minio_client,
     force: bool = False,
+    remaining_emails: int = 1,
 ) -> int:
     """Run the extraction pipeline for a single already-fetched Gmail message.
 
@@ -134,7 +136,6 @@ async def _process_message(
     already-processed guard is bypassed — used to reprocess specific emails
     whose earlier attempt failed for a since-fixed transient reason.
     """
-    processed = 0
     payload = msg.get("payload", {})
     headers = {h["name"].lower(): h["value"] for h in payload.get("headers", [])}
     from_header = headers.get("from", "")
@@ -176,6 +177,19 @@ async def _process_message(
     if not html_body:
         return 0
 
+    with track_email_processing(user.household_id, remaining_emails):
+        return await _parse_message(user, db, msg_meta, minio_client, source, html_body)
+
+
+async def _parse_message(
+    user: User,
+    db: AsyncSession,
+    msg_meta: dict,
+    minio_client,
+    source: str,
+    html_body: str,
+) -> int:
+    processed = 0
     logger.info(
         "Processing email from %s (msg %s, %d chars)",
         source,
@@ -585,9 +599,34 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
             user.email,
         )
 
-        for msg_meta in messages:
+        # Count only distinct emails not already attempted by this household.
+        # The remaining count includes the email currently being parsed.
+        message_ids = list(dict.fromkeys(message["id"] for message in messages))
+        if message_ids:
+            attempted = await db.execute(
+                select(ParseAttempt.email_id)
+                .where(
+                    ParseAttempt.household_id == user.household_id,
+                    ParseAttempt.email_id.in_(message_ids),
+                )
+                .distinct()
+            )
+            attempted_ids = set(attempted.scalars())
+            message_ids = [
+                email_id for email_id in message_ids if email_id not in attempted_ids
+            ]
+
+        for index, email_id in enumerate(message_ids):
+            msg_meta = {"id": email_id}
             msg = await asyncio.to_thread(_gmail_get_message, service, msg_meta["id"])
-            processed += await _process_message(user, db, msg_meta, msg, minio_client)
+            processed += await _process_message(
+                user,
+                db,
+                msg_meta,
+                msg,
+                minio_client,
+                remaining_emails=len(message_ids) - index,
+            )
 
         user.last_email_poll = datetime.now(timezone.utc)
         await db.commit()
@@ -619,14 +658,21 @@ async def reprocess_emails(user: User, db: AsyncSession, email_ids: list[str]) -
     ensure_bucket(minio_client)
 
     processed = 0
-    for email_id in email_ids:
+    email_ids = list(dict.fromkeys(email_ids))
+    for index, email_id in enumerate(email_ids):
         try:
             msg = await asyncio.to_thread(_gmail_get_message, service, email_id)
         except Exception:
             logger.exception("Failed to fetch Gmail message %s", email_id)
             continue
         processed += await _process_message(
-            user, db, {"id": email_id}, msg, minio_client, force=True
+            user,
+            db,
+            {"id": email_id},
+            msg,
+            minio_client,
+            force=True,
+            remaining_emails=len(email_ids) - index,
         )
 
     return processed
