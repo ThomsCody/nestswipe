@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -12,7 +12,9 @@ class Household(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), default="My Household")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
     members: Mapped[list["User"]] = relationship(back_populates="household")
 
@@ -30,7 +32,9 @@ class User(Base):
     openai_api_key: Mapped[str | None] = mapped_column(Text)
     email_notifications: Mapped[bool] = mapped_column(Boolean, server_default="true")
     last_email_poll: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
     household: Mapped[Household] = relationship(back_populates="members")
 
@@ -49,8 +53,20 @@ class HouseholdInvite(Base):
     invitee_email: Mapped[str] = mapped_column(String(255))
     invitee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     household_id: Mapped[int] = mapped_column(ForeignKey("households.id"))
-    status: Mapped[InviteStatus] = mapped_column(Enum(InviteStatus), default=InviteStatus.pending)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    status: Mapped[InviteStatus] = mapped_column(
+        Enum(InviteStatus), default=InviteStatus.pending
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index(
+            "idx_household_invites_inviter_id_created_at",
+            inviter_id,
+            created_at.desc(),
+        ),
+    )
 
     inviter: Mapped[User] = relationship(foreign_keys=[inviter_id])
     invitee: Mapped[User | None] = relationship(foreign_keys=[invitee_id])
