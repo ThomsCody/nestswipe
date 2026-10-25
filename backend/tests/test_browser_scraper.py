@@ -531,3 +531,14 @@ async def test_bellesdemeures_renderer_phone_response(
     result = await scraper._scrape_browser(url, "seloger")
     assert result.page_text
     assert result.contact_phone == expected
+
+
+async def test_redirect_safety_is_kept_for_session_and_listing_request(
+    configured, renderer
+):
+    normal = session(response(), response())
+    with patch.object(scraper, "AsyncSession", return_value=normal) as factory:
+        result = await scraper.scrape_listing(URL, "seloger")
+    assert result.page_text
+    assert factory.call_args.kwargs["allow_redirects"] == scraper.CurlFollow.SAFE
+    assert normal.get.await_args.kwargs["allow_redirects"] == scraper.CurlFollow.SAFE

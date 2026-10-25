@@ -1,8 +1,11 @@
 import os
+from datetime import datetime, timedelta, timezone
 
 # Must be set before any app imports
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
-os.environ.setdefault("JWT_SECRET", "test-secret-key")
+os.environ["JWT_SECRET"] = (
+    "test-only-jwt-signing-key-not-a-production-secret-64-bytes-long-000"
+)
 os.environ.setdefault("MINIO_ENDPOINT", "localhost:9000")
 os.environ.setdefault("MINIO_ROOT_USER", "test")
 os.environ.setdefault("MINIO_ROOT_PASSWORD", "test")
@@ -10,7 +13,7 @@ os.environ.setdefault("DD_TRACE_ENABLED", "false")
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from jose import jwt
+import jwt
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -50,7 +53,9 @@ async def client(db_session):
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as c:
         yield c
     app.dependency_overrides.clear()
 
@@ -76,7 +81,10 @@ async def test_user(db_session):
 @pytest_asyncio.fixture
 def auth_headers(test_user):
     token = jwt.encode(
-        {"sub": str(test_user.id)},
+        {
+            "sub": str(test_user.id),
+            "exp": datetime.now(timezone.utc) + timedelta(hours=1),
+        },
         os.environ["JWT_SECRET"],
         algorithm="HS256",
     )

@@ -45,4 +45,4 @@ async def test_poll_status_is_scoped_to_authenticated_household(
 
 async def test_poll_status_requires_authentication(client):
     response = await client.get("/api/v1/listings/poll-status")
-    assert response.status_code == 403
+    assert response.status_code == 401

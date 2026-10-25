@@ -12,7 +12,9 @@ async def test_me_returns_user_info(client, test_user, auth_headers):
 async def test_me_without_token_returns_401(client):
     resp = await client.get("/api/v1/auth/me")
 
-    assert resp.status_code == 403  # HTTPBearer returns 403 when no credentials
+    assert (
+        resp.status_code == 401
+    )  # HTTPBearer uses the standard unauthenticated status
 
 
 async def test_refresh_returns_new_token(client, test_user, auth_headers):

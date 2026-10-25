@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 logger = logging.getLogger(__name__)
 from fastapi.responses import RedirectResponse
-from jose import jwt
+import jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -53,7 +53,9 @@ async def google_login(state: str = ""):
 
 
 @router.get("/google/callback")
-async def google_callback(code: str, state: str = "", db: AsyncSession = Depends(get_db)):
+async def google_callback(
+    code: str, state: str = "", db: AsyncSession = Depends(get_db)
+):
     # Exchange code for tokens
     async with httpx.AsyncClient() as client:
         token_resp = await client.post(
@@ -67,7 +69,10 @@ async def google_callback(code: str, state: str = "", db: AsyncSession = Depends
             },
         )
         if token_resp.status_code != 200:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to exchange code")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to exchange code",
+            )
         tokens = token_resp.json()
 
         # Get user info
@@ -76,7 +81,10 @@ async def google_callback(code: str, state: str = "", db: AsyncSession = Depends
             headers={"Authorization": f"Bearer {tokens['access_token']}"},
         )
         if userinfo_resp.status_code != 200:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to get user info")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to get user info",
+            )
         userinfo = userinfo_resp.json()
 
     # Verify gmail.readonly was granted
@@ -133,14 +141,18 @@ async def refresh_token(user: User = Depends(get_current_user)):
 
 
 @router.get("/me", response_model=UserResponse)
-async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def me(
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+):
     has_api_key = bool(user.openai_api_key)
     if not has_api_key:
         result = await db.execute(
-            select(User.id).where(
+            select(User.id)
+            .where(
                 User.household_id == user.household_id,
                 User.openai_api_key.isnot(None),
-            ).limit(1)
+            )
+            .limit(1)
         )
         has_api_key = result.scalar_one_or_none() is not None
     return UserResponse(

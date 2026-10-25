@@ -6,6 +6,7 @@ from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 import httpx
 from bs4 import BeautifulSoup
+from curl_cffi import CurlFollow
 from curl_cffi.requests import AsyncSession
 
 from app.config import settings
@@ -629,7 +630,9 @@ async def _scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
         logger.info("Using residential proxy for source=%s", source)
 
     try:
-        async with AsyncSession(impersonate="chrome", proxy=proxy) as session:
+        async with AsyncSession(
+            impersonate="chrome", proxy=proxy, allow_redirects=CurlFollow.SAFE
+        ) as session:
             # A paid homepage fetch cannot execute a JavaScript challenge and
             # duplicates traffic before every listing. Fetch the listing first;
             # retain the existing browser fallback when access is blocked.
@@ -658,7 +661,7 @@ async def _scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
                     tracking_url,
                     headers=listing_headers,
                     timeout=REQUEST_TIMEOUT,
-                    allow_redirects=True,
+                    allow_redirects=CurlFollow.SAFE,
                 )
                 # Preserve the resolved destination if a later retry has a transport error.
                 http_status = resp.status_code

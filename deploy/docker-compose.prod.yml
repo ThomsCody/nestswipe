@@ -1,6 +1,7 @@
 services:
   caddy:
-    image: caddy:2-alpine
+    image: nestswipe-caddy:2.11.7-security
+    build: ./caddy
     ports:
       - "80:80"
       - "443:443"
@@ -31,7 +32,7 @@ services:
       - frontend_dist:/output
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine@sha256:f4610795587492cd4fb887c2dc3de301b813278bb6f616992061141b5f15ac36
     command:
       - postgres
       - -c

@@ -187,9 +187,7 @@ async def test_offer_rejects_invalid_money(
 async def test_offer_cannot_be_updated_by_another_household(
     client, auth_headers, sample_listing, db_session
 ):
-    import os
-
-    from jose import jwt
+    from app.api.auth import create_access_token
 
     from app.models.user import Household, User
 
@@ -207,9 +205,7 @@ async def test_offer_cannot_be_updated_by_another_household(
     )
     db_session.add(outsider)
     await db_session.commit()
-    token = jwt.encode(
-        {"sub": str(outsider.id)}, os.environ["JWT_SECRET"], algorithm="HS256"
-    )
+    token = create_access_token(outsider.id)
     response = await client.patch(
         url, headers={"Authorization": f"Bearer {token}"}, json={"offer_price": "1"}
     )
