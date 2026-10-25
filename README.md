@@ -96,7 +96,8 @@ uvicorn app.main:app --reload --port 8000
 **Frontend** (with hot reload):
 ```bash
 cd frontend
-npm install
+nvm use  # Node version is pinned in .nvmrc
+npm ci
 npm run dev
 ```
 

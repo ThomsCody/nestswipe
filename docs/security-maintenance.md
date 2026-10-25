@@ -83,3 +83,44 @@ maintenance remain separate work.
 - [Caddy 2.11.7](https://github.com/caddyserver/caddy/releases/tag/v2.11.7)
 - [PostgreSQL 16.15](https://www.postgresql.org/docs/release/16.15/)
 - [Datadog Fleet upgrades](https://docs.datadoghq.com/agent/fleet_automation/upgrade_agents/)
+
+
+## Frontend follow-up — 25 October 2026
+
+The frontend build and CI now use Node 24.22.1 LTS. Docker pins the Alpine image
+by digest, `.nvmrc` records the developer version, and `npm ci` installs the checked-in
+lockfile. The Docker context excludes local dependencies, build output and env files.
+
+Security updates include Axios 1.20.0, React Router 7.18.4, Vite 6.4.5, Vitest 4.1.12,
+Happy DOM 21.0.4 and PostCSS 8.5.31, plus compatible transitive updates. Vite 6.4
+continues to receive security backports; React 18 and Tailwind 3 remain compatible
+with the current application. This change does not migrate UI frameworks.
+
+The initial npm audit reported 18 affected packages (one critical, twelve high,
+four moderate and one low). After updating, production dependencies have zero
+reported findings; the full development tree has zero high or critical findings.
+Three moderate reports remain, all representing the same parser advisory propagated
+through `tailwindcss` and `postcss-nested`:
+
+- GHSA-rj75-hqrm-r3gf lists `postcss-selector-parser <7.1.6` in advisory metadata.
+- The installed 6.1.5 release explicitly backports that fix for Tailwind 3.
+- Keep that compatible patched release rather than forcing parser 7's changed
+  mutation/iteration behavior into Tailwind 3. Recheck advisory metadata on the
+  next dependency review. This is a documented upstream backport, not an ignored
+  production vulnerability or a blanket audit suppression.
+
+CI checks the full tree at high severity and production dependencies at moderate
+severity, alongside UI tests and the production build. Local clean installation on
+Node 24 passes all 84 UI tests and TypeScript/build checks. ARM64 image tests also
+pass all 84 cases. Desktop and mobile browser checks pass login redirects, OAuth
+handoff, callback handling, authenticated request headers, navigation and expired
+session logout without JavaScript errors. These browser checks use mocked API
+responses and do not send Google requests or change production data. The generated stylesheet
+is byte-for-byte identical to the previously deployed stylesheet. The existing
+large JavaScript chunk warning is non-fatal and is outside this security update.
+
+Sources:
+- [Node LTS release](https://nodejs.org/en/download)
+- [Supported Vite branches](https://vite.dev/releases)
+- [Parser 6.1.5 security backport](https://github.com/postcss/postcss-selector-parser/releases/tag/6.1.5)
+- [Parser advisory](https://github.com/advisories/GHSA-rj75-hqrm-r3gf)

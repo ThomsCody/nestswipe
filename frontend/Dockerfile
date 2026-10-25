@@ -1,13 +1,13 @@
-FROM node:20-alpine AS dev
+FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS dev
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm ci
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 
-FROM node:20-alpine AS build
+FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS build
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm ci
 COPY . .
 ARG VITE_DD_APPLICATION_ID
 ARG VITE_DD_CLIENT_TOKEN
