@@ -36,6 +36,7 @@ chmod 644 "$DEST/.backup.lock"
 exec 9>"$DEST/.backup.lock"
 flock -x -w 300 9 || fail 'backup/download is still running; retry deployment later'
 install -d -m 700 -o root -g root /var/lib/nestswipe-backup
+install -d -m 700 -o ubuntu -g ubuntu /var/lib/nestswipe-backup-receipts
 install -d -m 755 -o root -g root /usr/local/share/nestswipe-backup
 
 # Replace each file atomically while no backup or download holds the lock.

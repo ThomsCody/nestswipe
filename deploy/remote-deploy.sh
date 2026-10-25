@@ -19,6 +19,7 @@ bash datadog/check-host-agent.sh
 
 echo "==> Installing backup scripts and schedule ..."
 sudo -n bash backup/install-production.sh
+sudo -n bash security/install-monitoring.sh
 
 # Prevent the scheduled backup from stopping containers during a deployment.
 # Downloads also take a shared lock and can continue during deployment.
@@ -34,6 +35,7 @@ docker compose -f docker-compose.prod.yml run --rm backend \
 
 echo "==> Starting services ..."
 docker compose -f docker-compose.prod.yml up -d
+sudo -n systemctl start --no-block nestswipe-security-scan.service
 
 bash datadog/check-host-agent.sh
 

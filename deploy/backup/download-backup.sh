@@ -90,6 +90,10 @@ else
     log "Downloaded and verified $name"
 fi
 
+# Acknowledge only after local integrity verification. A failed acknowledgement
+# leaves completed archives intact and retries on the next scheduled invocation.
+"$SSH" "${ssh_options[@]}" "$HOST" "ack $name $expected"
+
 completed=()
 shopt -s nullglob
 for path in "$DEST"/nestswipe-*; do

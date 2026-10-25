@@ -59,8 +59,9 @@ FileVault, not by an interactive passphrase. The Mac's cron only downloads
 ciphertext; it never decrypts automatically.
 
 The separate `.keys/download_ed25519` SSH key is restricted on the server to
-`latest` and `fetch nestswipe-<timestamp>` operations. It cannot open a shell,
-forward ports, execute arbitrary commands or write files. Host verification is
+`latest`, `fetch nestswipe-<timestamp>` and validated checksum acknowledgement
+operations. It cannot open a shell, forward ports, execute arbitrary commands or
+write arbitrary files. Host verification is
 pinned in `.keys/known_hosts`; the job does not use the interactive 1Password
 SSH agent. All backups, keys and logs are ignored by Git and excluded from
 deployment rsync. Never move them into a tracked directory.
@@ -196,3 +197,20 @@ bash deploy/backup/test-download.sh
 
 The transfer tests use a fake SSH endpoint and cover retention, failed integrity
 checks, unsafe filenames, partial cleanup and the weekly deadline gate.
+
+## Maintenance alerts
+
+The production job records its last attempted result for the five-minute host
+maintenance check. A skipped cron tick or a busy backup lock is not marked as a
+failed attempt. Completed backups are also checked against Saturday's Paris-time
+deadline, with a six-hour allowance for completion.
+
+After a download's size and SHA-256 checks succeed, the Mac sends a restricted
+`ack <archive-name> <sha256>` command. This can only record a receipt for a retained
+archive whose manifest digest matches. It cannot write arbitrary paths or open a
+shell. Failed acknowledgement leaves the completed local backup intact and the
+weekly cycle unmarked, so cron retries. Missing Monday acknowledgements alert
+from Tuesday 04:00 Paris, including when the Mac is asleep or offline.
+
+See [maintenance monitoring](../security/MONITORING.md) for timers, alert policy and
+installation order. These checks do not replace periodic restore tests.

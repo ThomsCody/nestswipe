@@ -1,0 +1,27 @@
+{
+  "name": "Nestswipe: Verified Mac backup download overdue",
+  "type": "service check",
+  "query": "\"nestswipe.maintenance.mac_download\".over(\"host:nestswipe-vnic\",\"env:prod\").by(\"host\").last(2).count_by_status()",
+  "message": "The Monday 22:00 Europe/Paris download has no fresh checksum-verification acknowledgement after six hours. Check that the Mac is awake and online, its cron and rosen_immo/backups/.logs/download.log. The receipt proves the transfer was verified, not that the Mac still retains its disk.\n\nIf this check stops reporting for 20 minutes, investigate the host Agent and nestswipe-security-report.timer.",
+  "tags": [
+    "managed_by:nestswipe",
+    "service:nestswipe-security",
+    "env:prod"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 2,
+      "warning": 2,
+      "ok": 1,
+      "unknown": 2
+    },
+    "notify_no_data": true,
+    "no_data_timeframe": 20,
+    "include_tags": true,
+    "renotify_interval": 1440,
+    "renotify_statuses": [
+      "alert",
+      "no data"
+    ]
+  }
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Forced command for the Mac's SSH key. No shell, arbitrary paths or writes.
+# Forced command for the Mac's SSH key. Only exports and a fixed receipt file.
 set -euo pipefail
 export PATH=/usr/bin:/bin
 DEST=/home/ubuntu/nestswipe-backups
@@ -22,7 +22,20 @@ elif [[ "$command" =~ ^fetch\ (nestswipe-[0-9]{8}T[0-9]{6}Z)$ ]]; then
     [[ -d "$DEST/$name" && ! -L "$DEST/$name" ]]
     [[ -f "$DEST/$name/backup.tar.gz.enc" && ! -L "$DEST/$name/backup.tar.gz.enc" ]]
     cat "$DEST/$name/backup.tar.gz.enc"
+elif [[ "$command" =~ ^ack\ (nestswipe-[0-9]{8}T[0-9]{6}Z)\ ([a-f0-9]{64})$ ]]; then
+    name=${BASH_REMATCH[1]}
+    digest=${BASH_REMATCH[2]}
+    [[ -d "$DEST/$name" && ! -L "$DEST/$name" ]]
+    read -r expected_name expected_digest _bytes < "$DEST/$name/manifest.txt"
+    [[ "$name" == "$expected_name" && "$digest" == "$expected_digest" ]]
+    receipts=/var/lib/nestswipe-backup-receipts
+    [[ -d "$receipts" && ! -L "$receipts" ]]
+    umask 077
+    temporary=$(mktemp "$receipts/.mac.XXXXXXXX")
+    trap 'rm -f -- "$temporary"' EXIT
+    printf '%s %s\n' "$(date +%s)" "$name" > "$temporary"
+    mv -f -- "$temporary" "$receipts/mac"
 else
-    echo 'This key only permits latest or fetch of a named Nestswipe backup.' >&2
+    echo 'This key only permits latest, fetch or checksum acknowledgement of a named backup.' >&2
     exit 2
 fi

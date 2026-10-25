@@ -1,0 +1,27 @@
+{
+  "name": "Nestswipe: Production backup failed or overdue",
+  "type": "service check",
+  "query": "\"nestswipe.maintenance.backup\".over(\"host:nestswipe-vnic\",\"env:prod\").by(\"host\").last(2).count_by_status()",
+  "message": "A backup failed or the Saturday 03:00 Europe/Paris backup is missing after six hours. Inspect /var/log/nestswipe-backup.log and /var/lib/nestswipe-backup/last-result. Preserve existing archives; do not start another backup blindly.\n\nIf this check stops reporting for 20 minutes, investigate the host Agent and nestswipe-security-report.timer.",
+  "tags": [
+    "managed_by:nestswipe",
+    "service:nestswipe-security",
+    "env:prod"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 2,
+      "warning": 2,
+      "ok": 1,
+      "unknown": 2
+    },
+    "notify_no_data": true,
+    "no_data_timeframe": 20,
+    "include_tags": true,
+    "renotify_interval": 1440,
+    "renotify_statuses": [
+      "alert",
+      "no data"
+    ]
+  }
+}

@@ -12,6 +12,12 @@ from urllib.request import Request, urlopen
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--definitions",
+        nargs="+",
+        type=Path,
+        help="Publish only these monitor JSON files; default is all definitions",
+    )
+    parser.add_argument(
         "--org-uuid", required=True, help="Expected Datadog organization UUID"
     )
     parser.add_argument(
@@ -67,7 +73,9 @@ def main():
         raise SystemExit("Credentials belong to a different Datadog organization.")
     definitions = [
         json.loads(path.read_text())
-        for path in sorted(Path(__file__).parent.glob("*-monitor.json"))
+        for path in (
+            args.definitions or sorted(Path(__file__).parent.glob("*-monitor.json"))
+        )
     ]
     payloads = [prepare_payload(definition, args.notify) for definition in definitions]
     for payload in payloads:

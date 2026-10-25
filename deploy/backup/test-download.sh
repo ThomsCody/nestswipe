@@ -18,6 +18,10 @@ last=${!#}
 case "$last" in
     latest) cat "$FAKE_REMOTE/manifest" ;;
     fetch\ *) cat "$FAKE_REMOTE/payload" ;;
+    ack\ *)
+        [[ ! -f "$FAKE_REMOTE/reject-ack" ]] || exit 1
+        printf '%s\n' "$last" > "$FAKE_REMOTE/ack"
+        ;;
     *) exit 99 ;;
 esac
 MOCK
@@ -35,6 +39,14 @@ done
 for day in 03 04 05; do [[ -s "$NESTSWIPE_BACKUP_DIR/nestswipe-202610${day}T010000Z/SHA256SUMS" ]]; done
 [[ -d "$NESTSWIPE_BACKUP_DIR/nestswipe-do-not-delete" ]]
 "$ROOT/deploy/backup/download-backup.sh" >/dev/null
+[[ $(cat "$FAKE_REMOTE/ack") == "ack nestswipe-20261005T010000Z $digest" ]]
+cp "$FAKE_REMOTE/ack" "$FAKE_REMOTE/ack-before"
+touch "$FAKE_REMOTE/reject-ack"
+if "$ROOT/deploy/backup/download-backup.sh" >/dev/null 2>&1; then
+    echo 'FAIL: missing acknowledgement accepted' >&2; exit 1
+fi
+[[ -s "$NESTSWIPE_BACKUP_DIR/nestswipe-20261005T010000Z/backup.tar.gz.enc" ]]
+rm "$FAKE_REMOTE/reject-ack"
 
 # A corrupt new transfer must not remove any successful backups or leave partials.
 sed 's/20261005/20261006/' "$FAKE_REMOTE/manifest" > "$FAKE_REMOTE/next"
@@ -44,6 +56,7 @@ if "$ROOT/deploy/backup/download-backup.sh" >/dev/null 2>&1; then
     echo 'FAIL: corrupt transfer accepted' >&2; exit 1
 fi
 [[ ! -e "$NESTSWIPE_BACKUP_DIR/nestswipe-20261006T010000Z" ]]
+cmp "$FAKE_REMOTE/ack-before" "$FAKE_REMOTE/ack"
 for day in 03 04 05; do [[ -s "$NESTSWIPE_BACKUP_DIR/nestswipe-202610${day}T010000Z/SHA256SUMS" ]]; done
 [[ -z $(find "$NESTSWIPE_BACKUP_DIR" -maxdepth 1 -name '.partial.*' -print) ]]
 [[ ! -d "$NESTSWIPE_BACKUP_DIR/.download.lock" ]]

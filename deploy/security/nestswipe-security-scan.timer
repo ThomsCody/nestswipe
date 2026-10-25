@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Nestswipe production container vulnerability scan
+
+[Timer]
+OnCalendar=*-*-* 05:15:00 Europe/Paris
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

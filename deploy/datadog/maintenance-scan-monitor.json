@@ -1,0 +1,27 @@
+{
+  "name": "Nestswipe: Container vulnerability scan failed or stale",
+  "type": "service check",
+  "query": "\"nestswipe.maintenance.scan\".over(\"host:nestswipe-vnic\",\"env:prod\").by(\"host\").last(2).count_by_status()",
+  "message": "The daily scan failed, is older than 36 hours, or no longer matches the deployed image IDs. Inspect journalctl -u nestswipe-security-scan and /var/lib/nestswipe-security/scan.json. An inconclusive scan must not be treated as zero vulnerabilities.\n\nIf this check stops reporting for 20 minutes, investigate the host Agent and nestswipe-security-report.timer.",
+  "tags": [
+    "managed_by:nestswipe",
+    "service:nestswipe-security",
+    "env:prod"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 2,
+      "warning": 2,
+      "ok": 1,
+      "unknown": 2
+    },
+    "notify_no_data": true,
+    "no_data_timeframe": 20,
+    "include_tags": true,
+    "renotify_interval": 1440,
+    "renotify_statuses": [
+      "alert",
+      "no data"
+    ]
+  }
+}

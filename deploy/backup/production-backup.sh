@@ -11,6 +11,7 @@ CERT=/etc/nestswipe-backup/recipient.pem
 LOCK=$DEST/.backup.lock
 stage=
 stopped=()
+attempted=false
 
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*"; }
 
@@ -47,6 +48,10 @@ cleanup() {
         rm -rf -- "$stage"
     fi
     if ((status != 0)); then
+        if [[ "$attempted" == true ]]; then
+            printf 'failed %s\n' "$(date +%s)" > "$STATE/last-result.tmp"
+            mv "$STATE/last-result.tmp" "$STATE/last-result"
+        fi
         log "ERROR: backup failed (exit $status); previous completed backups retained."
         logger -t nestswipe-backup "Backup failed with exit $status" || true
     fi
@@ -77,6 +82,7 @@ if [[ ${1:-} == --scheduled && -f "$STATE/last-success" ]] &&
     exit 0
 fi
 
+attempted=true
 [[ -s "$CERT" && -s "$PROJECT/deploy/.env" && -s "$PROJECT/deploy/oauth.json" ]]
 openssl x509 -in "$CERT" -checkend 604800 -noout >/dev/null
 for container in deploy-backend-1 deploy-seloger-browser-1 deploy-minio-1 deploy-postgres-1; do
@@ -180,4 +186,6 @@ for ((i=0; i<${#completed[@]}-2; i++)); do
 done
 printf '%s\n' "$cycle" > "$STATE/last-success.tmp"
 mv "$STATE/last-success.tmp" "$STATE/last-success"
+printf 'ok %s\n' "$(date +%s)" > "$STATE/last-result.tmp"
+mv "$STATE/last-result.tmp" "$STATE/last-result"
 log "Completed $name ($bytes encrypted bytes); keeping the newest two backups."
