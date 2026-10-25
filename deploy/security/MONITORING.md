@@ -1,18 +1,18 @@
 # Maintenance monitoring
 
-The existing host Datadog Agent receives service checks every five minutes over
-its local DogStatsD Unix socket. No new Oracle resource, API key, public port,
-Datadog security product or custom metric is needed. Notifications use the same
-owner handle as the existing Nestswipe alert, supplied at publication time rather
-than stored in source.
+Nestswipe uses Datadog's existing native vulnerability management for host and
+container CVEs. Do not install a separate vulnerability scanner or maintain a
+second vulnerability database on the VM.
+
+The custom additions report application-specific backup state and Ubuntu's reboot
+flag to the existing host Agent every five minutes over its DogStatsD Unix socket.
+They require no new Oracle resource, API key, public port or custom metric.
 
 | Check | Failure condition |
 | --- | --- |
 | Production backup | Last attempted backup failed, no valid completed archive, or Saturday 03:00 Paris backup is still missing at 09:00. |
 | Mac copy | No checksum-verified download acknowledgement for Monday 22:00 Paris by Tuesday 04:00, or the acknowledged archive predates the preceding Saturday. |
 | Reboot | Ubuntu creates `/var/run/reboot-required`. |
-| Scan health | Failed/inconclusive scan, more than 36 hours since completion, vulnerability database older than 48 hours, or deployed image IDs changed. |
-| Fixable vulnerabilities | High/critical matches alert; other severities warn. Findings with no published fixed version remain in the reports. |
 
 Two failing samples trigger an alert; one healthy sample recovers. If checks stop
 arriving for 20 minutes, their monitors report missing data. Unresolved alert/no-data
@@ -21,55 +21,41 @@ and allow six hours for slow jobs/retries. A sleeping/offline Mac will eventuall
 alert; the job cannot wake it. An acknowledgement proves the transfer was verified
 at that time, not that the Mac still has its files or that a database restore works.
 
-## Container scans
+## Native vulnerability detection and notifications
 
-A systemd timer scans the exact image IDs of the five production containers daily
-at 05:15 Europe/Paris, with up to 15 minutes of jitter. Deployment also requests a
-scan after containers start. Trivy scans OS packages and supported language
-packages/binaries; it does not inspect mounted databases, photo volumes or runtime
-secrets. Secret scanning is disabled. Scanning does not pull replacement application
-images, patch containers, restart services or reboot the host.
+On 25 October 2026, production already had `sbom.enabled`,
+`sbom.container_image.enabled` and `sbom.host.enabled` set to true. The Agent's
+container-image/SBOM integrations were healthy and sending data. Datadog's findings
+API confirmed both Nestswipe host findings and running-container findings.
 
-The scanner runs with a 50% single-CPU quota, low CPU/I/O priority, a 2 GiB memory
-limit and a 100-minute overall timeout. Each image has a 15-minute scanner timeout.
-Only the latest report per container and a summary are retained under root-only
-`/var/lib/nestswipe-security/`. The vulnerability database/cache is under
-`/var/cache/nestswipe-trivy/`. An image with no recognized OS package inventory is
-inconclusive, never green. A deployment during the scan invalidates the result.
+The existing native notification rule **Critical and High Severity Findings**
+(`n0p-rfx-u8t`) routes high/critical findings to its existing owner, with a daily
+aggregation window. The monitoring follow-up adds its missing
+`container_image_vulnerability` category while preserving all existing categories,
+recipients and aggregation. Native notification rules report new issues; they are
+not a daily email of the whole historical backlog. Review fix availability and
+running-image status in Datadog when prioritizing remediation.
 
-The first full scan on 25 October found matches beyond the earlier OS/runtime
-package audits: Python package metadata, Caddy's embedded Go dependencies,
-PostgreSQL image's `gosu` helper, and MinIO OS/Go dependencies. Counts are package
-and advisory matches, not a count of exploitable application vulnerabilities.
+Agent configuration remains managed through Fleet. No separate vulnerability
+scanner, scanner timer or CVE service-check monitor remains installed. Native
+finding presence is verified at the account level; it does not prove every
+language package is covered or that all version matches are exploitable.
 
-MinIO is included in detection but remains unchanged, as requested. Finding a
-published fix does not establish exploitability or guarantee a compatible upgrade;
-review applicability and test updates. There is no blanket exclusion of existing
-findings. Host packages and build-only frontend dependencies are outside this daily
-container scan; existing dependency CI and Ubuntu updates remain separate.
+References:
+- https://docs.datadoghq.com/security/cloud_security_management/setup/agent/linux/
+- https://docs.datadoghq.com/api/latest/security-monitoring/patch-a-vulnerability-based-notification-rule/
 
 ## Installation and deployment
 
-Prerequisites: the existing host Agent/DogStatsD socket, Docker, systemd, Python 3.10+
-with timezone data, and the existing backup installation. On a replacement ARM64 VM,
-install the reviewed scanner first:
-
-- Version: Trivy **0.76.1**.
-- Official release: <https://github.com/aquasecurity/trivy/releases/tag/v0.76.1>.
-- Asset: `trivy_0.76.1_Linux-ARM64.tar.gz`.
-- Archive SHA256: `e174dff2a6dba5e3ae41f8d0537a6324405bd08132497340304c6b20e0f16a1f`.
-- Extracted binary SHA256: `b422130ea54e53e142e65c838662e48919ce9c3f23f17d80066b43e70550cb85`.
-- Install the verified binary, owned by root, mode 755, at `/usr/local/bin/nestswipe-trivy`.
-
-`install-monitoring.sh` verifies the binary checksum before installing the jobs.
-Update the pin and verify upstream provenance when upgrading the scanner itself.
-Normal app deployments reinstall versioned monitoring files without restarting the
-Agent. First installation or a monitoring-only deployment:
+Prerequisites: the existing host Agent/DogStatsD socket, systemd, Python 3.10+
+with timezone data, and the existing backup installation. Normal app deployments
+reinstall these versioned monitoring files without restarting the Agent or
+changing its native security configuration. First installation or a monitoring-only
+deployment:
 
 ```sh
 sudo bash deploy/backup/install-production.sh
 sudo bash deploy/security/install-monitoring.sh
-sudo systemctl start --no-block nestswipe-security-scan.service
 ```
 
 Backup installation must precede updating the Mac downloader: the restricted key
@@ -80,13 +66,13 @@ ubuntu (mode 700); the key still cannot execute a shell or choose a write path.
 Never acknowledge a backup that has not been checked on the Mac. Existing local
 archives can be checksum-verified and acknowledged without downloading again.
 
-Publish just these monitors using the existing `dd-auth` authentication procedure,
-explicit expected organization UUID, and the existing owner's notification handle:
+Publish only the three custom monitors using the existing `dd-auth` procedure,
+explicit expected organization UUID, and existing owner's notification handle:
 
 ```sh
 python3 deploy/datadog/publish_monitor.py --org-uuid "$EXPECTED_ORG_UUID" \
   --notify "$NOTIFY_HANDLE" --definitions deploy/datadog/maintenance-*-monitor.json
-# Repeat with --apply only after reviewing validation and live service-check data.
+# Repeat with --apply after reviewing validation and live service-check data.
 ```
 
 The publisher validates every definition, refuses unmanaged name collisions and
@@ -97,20 +83,19 @@ source. Monitor notification delivery depends on Datadog and the owner's routing
 
 ```sh
 sudo systemctl start nestswipe-security-report.service
-sudo journalctl -u nestswipe-security-report -u nestswipe-security-scan --since today
+sudo journalctl -u nestswipe-security-report --since today
 sudo systemctl list-timers 'nestswipe-security-*'
-sudo cat /var/lib/nestswipe-security/scan.json
 ```
 
 Confirm statuses in the intended Datadog account; a successful local socket send
 alone does not prove backend ingestion. Local checks are covered by
-`python3 -m unittest discover -s deploy/security -p 'test_*.py'` and the existing
-Mac transfer tests, including failure/retention/acknowledgement behavior.
+`python3 -m unittest discover -s deploy/security -p 'test_*.py'` and the Mac transfer
+tests, including failure/retention/acknowledgement behavior.
 
-To remove these jobs, disable/stop their timers and the scan/report services, then
-mute or remove their five Datadog monitors to avoid intentional missing-data alerts.
-Do not disable the backup cron or change keys/archives. Reverting only the download
-acknowledgement causes the Mac monitor to become stale.
+To remove the custom checks, disable/stop the report timer/service, then mute or
+remove only their three monitors to avoid intentional missing-data alerts. Preserve
+native vulnerability collection/notifications, the backup cron, keys and archives.
+Reverting only download acknowledgements causes the Mac monitor to become stale.
 
 ## Fleet follow-up, 25 October 2026
 

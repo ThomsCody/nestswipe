@@ -35,7 +35,6 @@ docker compose -f docker-compose.prod.yml run --rm backend \
 
 echo "==> Starting services ..."
 docker compose -f docker-compose.prod.yml up -d
-sudo -n systemctl start --no-block nestswipe-security-scan.service
 
 bash datadog/check-host-agent.sh
 

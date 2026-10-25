@@ -1,10 +1,10 @@
 [Unit]
-Description=Nestswipe backup, reboot and vulnerability service checks
-After=datadog-agent.service docker.service
+Description=Nestswipe backup and reboot service checks
+After=datadog-agent.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/sbin/nestswipe-security-monitor report
+ExecStart=/usr/local/sbin/nestswipe-security-monitor
 TimeoutStartSec=60
 User=root
 UMask=0077
