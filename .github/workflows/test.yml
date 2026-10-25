@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14.9"
       - run: python -m unittest discover -s deploy/security -p 'test_*.py' -v
       - run: shellcheck deploy/security/*.sh deploy/backup/*.sh deploy/remote-deploy.sh
 
@@ -38,7 +38,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14.9"
           cache: pip
           cache-dependency-path: backend/requirements-test.txt
 
@@ -64,7 +64,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14.9"
           cache: pip
           cache-dependency-path: browser/requirements.txt
       - name: Install browser service dependencies

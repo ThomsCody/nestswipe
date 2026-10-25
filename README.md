@@ -295,7 +295,7 @@ If these variables are not set, email notifications are silently skipped (in-app
 |-------|-----------|
 | Frontend | React 18 + TypeScript + Vite + Tailwind CSS |
 | State | @tanstack/react-query |
-| Backend | Python 3.12 + FastAPI (async) |
+| Backend | Python 3.14.9 + FastAPI (async) |
 | Database | PostgreSQL 16 + SQLAlchemy 2.0 (async) + Alembic |
 | Photos | MinIO (S3-compatible) |
 | Scraping | curl_cffi (Chrome TLS impersonation) + BeautifulSoup |
