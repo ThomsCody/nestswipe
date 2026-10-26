@@ -1,10 +1,11 @@
 import json
 import logging
 
-from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import task
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
+
+from app.services.llm_observability import annotate_llm
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +195,7 @@ async def extract_listing_from_page(
         )
         input_tokens = response.usage.prompt_tokens if response.usage else 0
         output_tokens = response.usage.completion_tokens if response.usage else 0
-        LLMObs.annotate(
+        annotate_llm(
             metadata={"model": "gpt-4o-mini", "source": source},
             metrics={"input_tokens": input_tokens, "output_tokens": output_tokens},
         )

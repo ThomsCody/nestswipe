@@ -19,7 +19,7 @@ google-api-python-client==2.159.0
 python-multipart==0.0.32
 cryptography==50.0.2
 curl_cffi==0.16.3
-ddtrace==3.19.9
+ddtrace==4.16.0
 datadog==0.55.0
 python-json-logger==3.3.0
 sendgrid==6.11.0

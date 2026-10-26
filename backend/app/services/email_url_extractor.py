@@ -9,9 +9,10 @@ import json
 import logging
 
 from bs4 import BeautifulSoup
-from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import task
 from openai import AsyncOpenAI
+
+from app.services.llm_observability import annotate_llm
 
 logger = logging.getLogger(__name__)
 
@@ -58,13 +59,17 @@ def _format_link_table(links: list[tuple[int, str, str]]) -> str:
     lines = []
     for idx, href, text in links:
         display_text = text if text else "(image/empty)"
-        short_href = href[:_URL_DISPLAY_LEN] + ("..." if len(href) > _URL_DISPLAY_LEN else "")
+        short_href = href[:_URL_DISPLAY_LEN] + (
+            "..." if len(href) > _URL_DISPLAY_LEN else ""
+        )
         lines.append(f"{idx} | {short_href} | {display_text}")
     return "\n".join(lines)
 
 
 @task(name="extract_listing_urls")
-async def extract_listing_urls(api_key: str, html: str, source: str) -> tuple[list[str], int, int]:
+async def extract_listing_urls(
+    api_key: str, html: str, source: str
+) -> tuple[list[str], int, int]:
     """Extract listing URLs from email HTML.
 
     Parses all <a> tags, sends a compact link table to the LLM which returns
@@ -101,7 +106,7 @@ async def extract_listing_urls(api_key: str, html: str, source: str) -> tuple[li
         )
         input_tokens = response.usage.prompt_tokens if response.usage else 0
         output_tokens = response.usage.completion_tokens if response.usage else 0
-        LLMObs.annotate(
+        annotate_llm(
             metadata={"model": "gpt-4o-mini", "source": source},
             metrics={"input_tokens": input_tokens, "output_tokens": output_tokens},
         )
