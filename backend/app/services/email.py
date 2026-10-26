@@ -1,4 +1,5 @@
 import logging
+from html import escape
 
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
@@ -26,12 +27,12 @@ async def send_mention_email(
 
     link = f"{settings.frontend_url}/favorites/{favorite_id}"
     html_content = f"""
-    <p>Hi {to_name},</p>
-    <p><strong>{commenter_name}</strong> mentioned you in a comment on <strong>{listing_title}</strong>:</p>
+    <p>Hi {escape(to_name)},</p>
+    <p><strong>{escape(commenter_name)}</strong> mentioned you in a comment on <strong>{escape(listing_title)}</strong>:</p>
     <blockquote style="border-left: 3px solid #ccc; padding-left: 12px; color: #555;">
-        {comment_body}
+        {escape(comment_body)}
     </blockquote>
-    <p><a href="{link}">View listing</a></p>
+    <p><a href="{escape(link, quote=True)}">View listing</a></p>
     """
 
     message = Mail(
@@ -62,9 +63,9 @@ async def send_assignment_email(
 
     link = f"{settings.frontend_url}/favorites/{favorite_id}"
     html_content = f"""
-    <p>Hi {to_name},</p>
-    <p><strong>{assigner_name}</strong> t'a assign\u00e9 le bien <strong>{listing_title}</strong>.</p>
-    <p><a href="{link}">Voir le bien</a></p>
+    <p>Hi {escape(to_name)},</p>
+    <p><strong>{escape(assigner_name)}</strong> t'a assign\u00e9 le bien <strong>{escape(listing_title)}</strong>.</p>
+    <p><a href="{escape(link, quote=True)}">Voir le bien</a></p>
     """
 
     message = Mail(
