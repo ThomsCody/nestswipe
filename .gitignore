@@ -19,6 +19,7 @@ frontend/dist/
 
 # Environment
 .env
+.env.reboot-key.tmp
 oauth.json
 deploy/.env
 deploy/oauth.json

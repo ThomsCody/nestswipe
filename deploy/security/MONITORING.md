@@ -142,8 +142,15 @@ and the attempt remains unverified; it never blindly retries rebooting.
 
 Installation prerequisites are the normal production paths/container names,
 database migrations, a configured host Agent, the backup installation, and the
-existing Datadog API/application keys in `deploy/.env`. The keys must permit
-current-user and monitor reads. No secret is embedded in source or systemd units.
+existing Datadog API key and dedicated `DD_REBOOT_APP_KEY` in `deploy/.env`.
+Normal deployments run `provision-reboot-key.py --provision --server ...`:
+the operator's local application key must initially permit `user_app_keys`.
+The script creates or recovers one named key scoped only to `monitors_read`,
+saves it in the ignored local `.env`, and sends only that dedicated key over SSH
+to the VM's existing `.env`. Later deployments reuse it; they never send the
+administrative application key. Current-user identity requires no extra scope.
+No secret is embedded in source or systemd units. When deploying a clean source
+export, set `NESTSWIPE_ENV_FILE` to the operator's existing local secrets file.
 Change the policy and commit it when changing org, installation path, public URL
 or maintenance hours; the installer reapplies the committed policy on deployment.
 Publish the updated reboot-monitor message with the existing publisher above.

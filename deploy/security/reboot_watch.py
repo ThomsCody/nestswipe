@@ -39,12 +39,17 @@ def database(sql):
     )
 
 
-def credentials(project):
+def read_credentials(path):
     # Parse data only: never source a shell file as root or print its contents.
     result = {}
-    for line in (Path(project) / "deploy/.env").read_text().splitlines():
+    for line in Path(path).read_text().splitlines():
         key, separator, value = line.partition("=")
-        if separator and key.strip() in {"DD_API_KEY", "DD_APP_KEY", "DD_SITE"}:
+        if separator and key.strip() in {
+            "DD_API_KEY",
+            "DD_APP_KEY",
+            "DD_REBOOT_APP_KEY",
+            "DD_SITE",
+        }:
             parts = shlex.split(value, comments=True)
             if len(parts) != 1:
                 raise ValueError("Invalid Datadog credential configuration")
@@ -54,8 +59,15 @@ def credentials(project):
     return result
 
 
-def monitor_state(policy):
-    values = credentials(policy["project"])
+def credentials(project):
+    result = read_credentials(Path(project) / "deploy/.env")
+    if result.get("DD_REBOOT_APP_KEY"):
+        result["DD_APP_KEY"] = result["DD_REBOOT_APP_KEY"]
+    return result
+
+
+def monitor_state(policy, *, values=None, definition=None):
+    values = credentials(policy["project"]) if values is None else values
     headers = {
         "DD-API-KEY": values["DD_API_KEY"],
         "DD-APPLICATION-KEY": values["DD_APP_KEY"],
@@ -70,7 +82,9 @@ def monitor_state(policy):
     identity = get("/api/v2/current_user")
     if identity["data"]["relationships"]["org"]["data"]["id"] != policy["org_uuid"]:
         raise ValueError("Wrong Datadog organization")
-    expected = json.loads(DEFINITION.read_text())
+    expected = json.loads(
+        (DEFINITION if definition is None else definition).read_text()
+    )
     matches = [
         m
         for m in get("/api/v1/monitor?" + urlencode({"name": expected["name"]}))

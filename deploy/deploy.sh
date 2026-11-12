@@ -22,5 +22,9 @@ rsync -avz --delete \
   --exclude '.DS_Store' \
   ./ "${SERVER}:${REMOTE_DIR}/"
 
+# Keep the VM credential restricted to monitor reads; administrative keys stay local.
+python3 deploy/security/provision-reboot-key.py --provision \
+  --env-file "${NESTSWIPE_ENV_FILE:-deploy/.env}" --server "$SERVER"
+
 echo "==> Checking host monitoring and deploying application containers ..."
 ssh "${SERVER}" 'sg docker -c "bash /home/ubuntu/nestswipe/deploy/remote-deploy.sh"'
