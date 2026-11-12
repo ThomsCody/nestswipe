@@ -99,6 +99,16 @@ class KeyTests(unittest.TestCase):
                 setup.store_key(path, KEY + "\nINJECTED=value")
             self.assertEqual(path.read_text(), "OTHER=preserved\n")
 
+    def test_accepts_prefixed_keys_and_quotes_special_characters(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "deploy").mkdir()
+            path = root / "deploy/.env"
+            path.write_text("DD_API_KEY=api\n")
+            key = "ddapp_" + KEY + "#special"
+            setup.store_key(path, key)
+            self.assertEqual(credentials(root)["DD_APP_KEY"], key)
+
     def test_sync_sends_only_dedicated_key_over_stdin(self):
         with patch.object(setup.subprocess, "run") as run:
             setup.sync("ubuntu@example.org", KEY)

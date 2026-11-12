@@ -19,7 +19,14 @@ KEY_NAME = "Nestswipe overnight reboot watcher (monitors_read)"
 
 
 def store_key(path, key):
-    if not re.fullmatch(r"[a-fA-F0-9]{40}", key):
+    if (
+        not isinstance(key, str)
+        or not key
+        or len(key) > 4096
+        or not key.isascii()
+        or not key.isprintable()
+        or any(character.isspace() for character in key)
+    ):
         raise ValueError("Unexpected application key format")
     if path.is_symlink():
         raise ValueError("Refusing to replace a symlinked secrets file")
@@ -27,7 +34,7 @@ def store_key(path, key):
     lines = [
         line for line in lines if line.partition("=")[0].strip() != "DD_REBOOT_APP_KEY"
     ]
-    content = "\n".join([*lines, "DD_REBOOT_APP_KEY=" + key]) + "\n"
+    content = "\n".join([*lines, "DD_REBOOT_APP_KEY=" + shlex.quote(key)]) + "\n"
     if content == path.read_text():
         return
     temporary = path.with_name(".env.reboot-key.tmp")
@@ -114,7 +121,7 @@ def sync(server, key):
         raise ValueError("Expected an SSH destination, without shell syntax or options")
     # The administrative local application key is never sent to the VM.
     remote = (
-        "import os,json,sys,re\nfrom pathlib import Path\n"
+        "import os,json,sys,shlex\nfrom pathlib import Path\n"
         + inspect.getsource(store_key)
         + "\nstore_key(Path('/home/ubuntu/nestswipe/deploy/.env'), json.load(sys.stdin))\n"
     )
