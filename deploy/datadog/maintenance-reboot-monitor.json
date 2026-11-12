@@ -2,7 +2,7 @@
   "name": "Nestswipe: Host reboot required",
   "type": "service check",
   "query": "\"nestswipe.maintenance.reboot\".over(\"host:nestswipe-vnic\",\"env:prod\").by(\"host\").last(2).count_by_status()",
-  "message": "Ubuntu reports a pending reboot. Schedule a maintenance window, respect the backup lock, and verify SSH, application and monitoring after reboot. This monitor never reboots automatically.\n\nIf this check stops reporting for 20 minutes, investigate the host Agent and nestswipe-security-report.timer.",
+  "message": "Ubuntu reports a pending reboot. The versioned nestswipe-reboot-watch.timer may reboot between 02:00 and 05:00 Europe/Paris after 15 minutes without authenticated client activity. It requires both this monitor in Alert and the local reboot flag, reserves maintenance atomically, and defers during SSH sessions, backups, deployments or package updates. Check its journal for deferral and post-reboot verification.\n\nIf this check stops reporting for 20 minutes, investigate the host Agent and nestswipe-security-report.timer.",
   "tags": [
     "managed_by:nestswipe",
     "service:nestswipe-security",

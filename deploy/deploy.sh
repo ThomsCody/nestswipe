@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SERVER="ubuntu@145.241.161.221"
+SERVER="${NESTSWIPE_SERVER:-ubuntu@145.241.161.221}"
 REMOTE_DIR="/home/ubuntu/nestswipe"
 
 echo "==> Syncing project to ${SERVER}:${REMOTE_DIR} ..."

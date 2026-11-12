@@ -1,4 +1,5 @@
 from app.models.interaction import Comment, Favorite, SwipeAction
+from app.models.maintenance import MaintenancePresence
 from app.models.listing import Listing, ListingPhoto, PriceHistory
 from app.models.notification import Notification
 from app.models.user import Household, HouseholdInvite, User
@@ -10,6 +11,7 @@ __all__ = [
     "HouseholdInvite",
     "Listing",
     "ListingPhoto",
+    "MaintenancePresence",
     "Notification",
     "PriceHistory",
     "SwipeAction",

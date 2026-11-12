@@ -19,6 +19,13 @@ from app.schemas.auth import TokenResponse, UserResponse
 
 router = APIRouter()
 
+
+@router.post("/presence", status_code=204)
+async def presence(user: User = Depends(get_current_user)):
+    """The authentication dependency records activity, including idle open tabs."""
+    return None
+
+
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"

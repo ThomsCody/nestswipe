@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Nestswipe overnight maintenance eligibility every five minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=nestswipe-reboot-watch.service
+
+[Install]
+WantedBy=timers.target

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useEffect } from "react";
 
 interface AuthState {
   token: string | null;
@@ -15,6 +15,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Read localStorage synchronously during init — no flash of unauthenticated state
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
   const loading = false;
+
+  useEffect(() => {
+    if (!token) return;
+    const heartbeat = () => {
+      void fetch("/api/v1/auth/presence", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }).catch(() => {});
+    };
+    heartbeat();
+    const timer = window.setInterval(heartbeat, 60_000);
+    // Also cover mobile browsers resuming after their timers were suspended.
+    window.addEventListener("focus", heartbeat);
+    document.addEventListener("visibilitychange", heartbeat);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", heartbeat);
+      document.removeEventListener("visibilitychange", heartbeat);
+    };
+  }, [token]);
 
   const login = useCallback((newToken: string) => {
     localStorage.setItem(TOKEN_KEY, newToken);

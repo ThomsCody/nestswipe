@@ -97,6 +97,79 @@ remove only their three monitors to avoid intentional missing-data alerts. Prese
 native vulnerability collection/notifications, the backup cron, keys and archives.
 Reverting only download acknowledgements causes the Mac monitor to become stale.
 
+## Automatic overnight reboots
+
+`nestswipe-reboot-watch.timer` checks every five minutes on the VM, independently
+of a developer laptop. `install-monitoring.sh`, called by every normal deployment,
+installs the versioned Python watcher, systemd units, monitor definition and
+`reboot-policy.json`. A new VM uses the same installation path and existing
+project secrets; no manual VM-only cron entry or Codex automation is required.
+
+The default maintenance window is **02:00 inclusive to 05:00 exclusive,
+Europe/Paris**, including daylight-saving changes. A reboot requires all of:
+
+- The uniquely named, managed Datadog reboot monitor is `Alert` in the configured
+  personal organization, with the expected type and query. IDs are discovered,
+  rather than tied to one VM. API errors and other states defer maintenance.
+- Ubuntu's `/var/run/reboot-required` is present and the application and Agent
+  are healthy.
+- No authenticated client activity for at least 15 minutes. Signed-in browser
+  tabs POST `/api/v1/auth/presence` every minute and on focus/visibility changes.
+  Every other authenticated API request also renews activity, covering older
+  browser versions while they are being used. A suspended/offline browser whose
+  heartbeats have stopped for 15 minutes counts as disconnected; stored JWTs alone
+  do not represent connected clients.
+- No SSH/login sessions, backup, download, deployment or dpkg/APT operation.
+- No unverified earlier reboot and no reboot in the preceding 24 hours.
+
+Migration 022 creates a singleton presence row initialized to the current time,
+so a fresh installation must observe at least 15 minutes before acting. The
+watcher atomically reserves a five-minute maintenance lease only while the row
+is idle. All authenticated requests serialize against that reservation and
+receive `503` with `Retry-After: 60` during the handoff; a newly arriving request
+cannot invalidate the idle decision after reservation. A failed preflight clears
+the lease; it also expires automatically. Health checks remain available. Photo
+URLs authenticated separately with query tokens are read-only and do not renew
+presence; the browser heartbeat covers signed-in photo viewers.
+
+The watcher holds the existing exclusive backup lock and POSIX dpkg locks through
+the reboot request, and checks SSH, the time window and the monitor again after
+reserving. A persisted attempt records the boot ID before requesting reboot.
+An incomplete attempt prevents reboot loops. After boot, the timer verifies a
+changed boot ID, healthy containers, public API and Agent, disappearance of the
+reboot flag, and Datadog monitor recovery to `OK`. Failures remain in the journal
+and the attempt remains unverified; it never blindly retries rebooting.
+
+Installation prerequisites are the normal production paths/container names,
+database migrations, a configured host Agent, the backup installation, and the
+existing Datadog API/application keys in `deploy/.env`. The keys must permit
+current-user and monitor reads. No secret is embedded in source or systemd units.
+Change the policy and commit it when changing org, installation path, public URL
+or maintenance hours; the installer reapplies the committed policy on deployment.
+Publish the updated reboot-monitor message with the existing publisher above.
+
+```sh
+# Normal deploy installs the watcher and applies migration 022 automatically.
+./deploy/deploy.sh
+
+# Standalone installation, after the app and migrations have been deployed:
+sudo bash deploy/security/install-monitoring.sh
+sudo systemctl list-timers nestswipe-reboot-watch.timer
+sudo /usr/local/sbin/nestswipe-reboot-watch --check
+sudo journalctl -u nestswipe-reboot-watch.service --since today
+
+# Pause automatic reboots; a later deployment intentionally enables them again.
+sudo systemctl disable --now nestswipe-reboot-watch.timer
+
+# Watcher boundary, race, failure, recovery and DST tests:
+python3 -m unittest discover -s deploy/security -p 'test_*.py'
+```
+
+`--check` never reserves maintenance or requests a reboot; it may report an SSH
+session because the administrator running it is connected. It takes the same
+maintenance locks briefly. Do not delete `attempt.json` to bypass failed recovery;
+investigate and verify the host, monitor and pending reboot first.
+
 ## Fleet follow-up, 25 October 2026
 
 The running host Agent is Fleet-managed 7.84.5. Retrying its reversible upgrade

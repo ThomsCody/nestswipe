@@ -13,4 +13,14 @@ done
 systemctl daemon-reload
 systemctl enable --now nestswipe-security-report.timer
 systemctl start nestswipe-security-report.service
+install -d -m 700 /etc/nestswipe-reboot /var/lib/nestswipe-reboot
+install -m 755 "$source_dir/reboot_watch.py" /usr/local/sbin/.nestswipe-reboot-watch.next
+mv -f /usr/local/sbin/.nestswipe-reboot-watch.next /usr/local/sbin/nestswipe-reboot-watch
+install -m 600 "$source_dir/reboot-policy.json" /etc/nestswipe-reboot/policy.json
+install -m 600 "$source_dir/../datadog/maintenance-reboot-monitor.json" /etc/nestswipe-reboot/monitor.json
+for unit in "$source_dir"/nestswipe-reboot-watch.service "$source_dir"/nestswipe-reboot-watch.timer; do
+    install -m 644 "$unit" "/etc/systemd/system/${unit##*/}"
+done
+systemctl daemon-reload
+systemctl enable --now nestswipe-reboot-watch.timer
 echo 'Backup, Mac acknowledgement and reboot reporting enabled.'

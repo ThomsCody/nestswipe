@@ -9,9 +9,39 @@ function wrapper({ children }: { children: React.ReactNode }) {
 
 beforeEach(() => {
   localStorage.clear();
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 204 }));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe("AuthContext", () => {
+  it("heartbeats immediately and every minute, stopping on logout", () => {
+    vi.useFakeTimers();
+    const { result, unmount } = renderHook(() => useAuth(), { wrapper });
+    expect(fetch).not.toHaveBeenCalled();
+    act(() => result.current.login("active-token"));
+    expect(fetch).toHaveBeenCalledWith("/api/v1/auth/presence", expect.objectContaining({
+      method: "POST",
+      headers: { Authorization: "Bearer active-token" },
+    }));
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(fetch).toHaveBeenCalledTimes(2);
+    act(() => result.current.logout());
+    act(() => vi.advanceTimersByTime(120_000));
+    expect(fetch).toHaveBeenCalledTimes(2);
+    unmount();
+  });
+
+  it("heartbeats when a suspended browser regains focus", () => {
+    localStorage.setItem(TOKEN_KEY, "saved-token");
+    const { unmount } = renderHook(() => useAuth(), { wrapper });
+    window.dispatchEvent(new Event("focus"));
+    expect(fetch).toHaveBeenCalledTimes(2);
+    unmount();
+  });
   it("reads token from localStorage on mount", () => {
     localStorage.setItem(TOKEN_KEY, "saved-token");
     const { result } = renderHook(() => useAuth(), { wrapper });

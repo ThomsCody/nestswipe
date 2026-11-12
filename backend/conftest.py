@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.database import Base, get_db
 from app.main import app
 from app.models.listing import Listing, ListingPhoto
+from app.models.maintenance import MaintenancePresence
 from app.models.user import Household, User
 
 
@@ -36,6 +37,7 @@ async def db_engine():
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(MaintenancePresence.__table__.insert().values(id=1))
     yield engine
     await engine.dispose()
 

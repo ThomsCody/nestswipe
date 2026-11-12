@@ -80,6 +80,26 @@ ssh ubuntu@$(terraform output -raw public_ip) "docker --version"
 
 The cloud-init script automatically installs Docker CE and Docker Compose plugin on first boot.
 
+## Rebuilding the application VM
+
+Restore the production secrets and backup recipient certificate, configure the
+[host Agent](../deploy/datadog/HOST_AGENT.md), and point the public application
+DNS at the replacement VM before deploying. Use the standard
+`/home/ubuntu/nestswipe` installation path. From the repository root:
+
+```sh
+NESTSWIPE_SERVER=ubuntu@NEW_VM_IP ./deploy/deploy.sh
+```
+
+The deployment applies database migrations and installs the committed backup,
+maintenance-reporting and overnight reboot-watcher scripts and systemd timers.
+No manually configured cron entry on the old VM is needed for the watcher.
+Its [policy and operational checks](../deploy/security/MONITORING.md#automatic-overnight-reboots)
+are versioned; it defaults to 02:00–05:00 Paris time and requires 15 minutes
+without authenticated client activity. Existing Datadog monitors are discovered
+by name in the configured personal organization. A missing monitor, missing
+credentials or other incomplete prerequisite prevents automatic rebooting.
+
 ## Teardown
 
 ```bash
