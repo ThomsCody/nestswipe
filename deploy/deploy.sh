@@ -18,6 +18,7 @@ rsync -avz --delete \
   --exclude 'deploy/.env' \
   --exclude 'deploy/oauth.json' \
   --exclude '.env' \
+  --exclude '.env.reboot-key.tmp' \
   --exclude 'oauth.json' \
   --exclude '.DS_Store' \
   ./ "${SERVER}:${REMOTE_DIR}/"
