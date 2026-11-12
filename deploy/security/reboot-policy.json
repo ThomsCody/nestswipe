@@ -5,6 +5,7 @@
   "idle_minutes": 15,
   "cooldown_hours": 24,
   "org_uuid": "cd1824fa-b069-11ee-b818-da7ad0900002",
+  "org_id": 968273,
   "project": "/home/ubuntu/nestswipe",
   "health_url": "https://nestswipe.freeddns.org/api/v1/health"
 }

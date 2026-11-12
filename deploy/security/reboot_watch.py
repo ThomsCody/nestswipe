@@ -79,9 +79,6 @@ def monitor_state(policy, *, values=None, definition=None):
         ) as response:
             return json.load(response)
 
-    identity = get("/api/v2/current_user")
-    if identity["data"]["relationships"]["org"]["data"]["id"] != policy["org_uuid"]:
-        raise ValueError("Wrong Datadog organization")
     expected = json.loads(
         (DEFINITION if definition is None else definition).read_text()
     )
@@ -93,6 +90,9 @@ def monitor_state(policy, *, values=None, definition=None):
     if len(matches) != 1:
         raise ValueError("Reboot monitor is missing or ambiguous")
     saved = matches[0]
+    # Scoped monitor keys can read this field without user-profile permissions.
+    if saved["org_id"] != policy["org_id"]:
+        raise ValueError("Wrong Datadog organization")
     if (
         saved["type"] != expected["type"]
         or saved["query"] != expected["query"]

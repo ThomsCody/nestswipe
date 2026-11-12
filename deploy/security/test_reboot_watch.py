@@ -1,3 +1,4 @@
+import io
 import json
 import tempfile
 import unittest
@@ -160,6 +161,43 @@ class WindowTests(unittest.TestCase):
                     watch.in_window(policy, datetime.fromisoformat(iso).timestamp()),
                     allowed,
                 )
+
+
+class MonitorIdentityTests(unittest.TestCase):
+    def test_scoped_monitor_read_checks_org_without_user_profile_access(self):
+        expected = {"name": "reboot", "type": "service check", "query": "expected"}
+        saved = {
+            **expected,
+            "org_id": 968273,
+            "tags": ["managed_by:nestswipe"],
+            "overall_state": "Alert",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            definition = Path(directory) / "monitor.json"
+            definition.write_text(json.dumps(expected))
+            for org_id, allowed in [(968273, True), (42, False)]:
+                saved["org_id"] = org_id
+                with patch.object(
+                    watch, "urlopen", return_value=io.StringIO(json.dumps([saved]))
+                ) as get:
+                    if allowed:
+                        self.assertEqual(
+                            watch.monitor_state(
+                                {"org_id": 968273},
+                                values={"DD_API_KEY": "api", "DD_APP_KEY": "scoped"},
+                                definition=definition,
+                            ),
+                            "Alert",
+                        )
+                    else:
+                        with self.assertRaisesRegex(ValueError, "Wrong Datadog"):
+                            watch.monitor_state(
+                                {"org_id": 968273},
+                                values={"DD_API_KEY": "api", "DD_APP_KEY": "scoped"},
+                                definition=definition,
+                            )
+                    self.assertEqual(get.call_count, 1)
+                    self.assertIn("/api/v1/monitor?", get.call_args.args[0].full_url)
 
 
 if __name__ == "__main__":

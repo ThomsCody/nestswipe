@@ -148,7 +148,9 @@ the operator's local application key must initially permit `user_app_keys`.
 The script creates or recovers one named key scoped only to `monitors_read`,
 saves it in the ignored local `.env`, and sends only that dedicated key over SSH
 to the VM's existing `.env`. Later deployments reuse it; they never send the
-administrative application key. Current-user identity requires no extra scope.
+administrative application key. Initial provisioning validates the organization
+UUID with the operator credential; runtime checks validate the numeric
+organization ID in the monitor response using only `monitors_read`.
 No secret is embedded in source or systemd units. When deploying a clean source
 export, set `NESTSWIPE_ENV_FILE` to the operator's existing local secrets file.
 Change the policy and commit it when changing org, installation path, public URL
