@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react";
+import type { ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import client from "@/api/client";
 import type { AxiosError } from "axios";
 
@@ -19,7 +21,7 @@ export default function ImportUrlButton() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState("");
-  const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
+  const [message, setMessage] = useState<{ text: ReactNode; ok: boolean } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { data: userStatus } = useQuery<UserStatus>({
@@ -32,14 +34,29 @@ export default function ImportUrlButton() {
     mutationFn: (importUrl) =>
       client.post("/listings/import", { url: importUrl }).then((r) => r.data),
     onSuccess: (data) => {
-      const suffix = data.already_favorited ? " (already in favorites)" : "";
-      setMessage({ text: `Added: ${data.listing.title}${suffix}`, ok: true });
+      setMessage({
+        text: data.created ? `Added: ${data.listing.title}` : (
+          <>
+            <Link
+              to={`/favorites/${data.favorite_id}`}
+              title={data.listing.title}
+              className="underline font-medium hover:text-green-800"
+            >
+              listing
+            </Link>
+            {" already existed: updated"}
+          </>
+        ),
+        ok: true,
+      });
       setUrl("");
       queryClient.invalidateQueries({ queryKey: ["favorites"] });
-      setTimeout(() => {
-        setOpen(false);
-        setMessage(null);
-      }, 2000);
+      if (data.created) {
+        setTimeout(() => {
+          setOpen(false);
+          setMessage(null);
+        }, 2000);
+      }
     },
     onError: (err) => {
       setMessage({
