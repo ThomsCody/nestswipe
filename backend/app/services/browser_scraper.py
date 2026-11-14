@@ -1,8 +1,9 @@
 import asyncio
+import json
 import logging
 import re
 from dataclasses import dataclass, field
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -136,6 +137,7 @@ URL_SOURCE_MAP = {
     "barnes-international.com": "barnes",
     "junot.fr": "junot",
     "leboncoin.fr": "leboncoin",
+    "jinka.fr": "jinka",
 }
 
 
@@ -229,6 +231,12 @@ def _extract_source_id(url: str, source: str) -> str | None:
         # or: https://www.leboncoin.fr/ad/ventes_immobilieres/3183368834
         match = re.search(r"/(?:vi|ad/[^/]+)/(\d+)", url)
         return match.group(1) if match else None
+    elif source == "jinka":
+        match = re.fullmatch(
+            r"/ad/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/?",
+            urlparse(url).path,
+        )
+        return match.group(1).lower() if match else None
     return None
 
 
@@ -281,6 +289,30 @@ def _extract_photos_from_html(
     seen_base: set[str] = set()
     photos: list[str] = []
 
+    # Jinka renders only the first five gallery images. Its listing JSON-LD
+    # includes the full gallery; use that instead of agency logos and UI images.
+    jinka_urls: list[str] = []
+    if source == "jinka":
+        for script in soup.find_all("script", type="application/ld+json"):
+            try:
+                data = json.loads(script.string or "")
+            except ValueError:
+                continue
+            entries = data if isinstance(data, list) else [data]
+            for entry in entries:
+                if (
+                    not isinstance(entry, dict)
+                    or entry.get("@type") != "RealEstateListing"
+                ):
+                    continue
+                images = entry.get("image", [])
+                if isinstance(images, str):
+                    images = [images]
+                if isinstance(images, list):
+                    jinka_urls.extend(
+                        image for image in images if isinstance(image, str)
+                    )
+
     # Inline JSON/JS data — the modern seloger.com template embeds its full
     # photo gallery in a script tag with double-escaped JSON (\" becomes
     # \\"), alongside SeLoger's own scene classification label for each
@@ -305,7 +337,9 @@ def _extract_photos_from_html(
             if label_match:
                 raw_labels[url] = label_match.group(1)
 
-    if mms_seloger_urls:
+    if jinka_urls:
+        candidate_urls = jinka_urls
+    elif mms_seloger_urls:
         candidate_urls = mms_seloger_urls
     else:
         # Older templates (e.g. bellesdemeures.com) render their gallery as

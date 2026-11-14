@@ -5,6 +5,7 @@ A web app to find your next apartment. Reads housing offer emails from Gmail (se
 ## Features
 
 - **Email ingestion** — Polls Gmail every 5 minutes for listing alert emails, extracts candidate URLs via GPT-4o-mini
+- **Jinka support** — Import public `jinka.fr/ad/<uuid>` links into favorites or process Jinka email alerts, including the full photo gallery
 - **Smart scraping** — Follows tracking URLs with Chrome TLS fingerprint impersonation (curl_cffi), extracts page content
 - **LLM extraction** — Extracts structured data (price, sqm, bedrooms, city, district, etc.) from listing pages using GPT-4o-mini
 - **Photo classification** — Filters out agent portraits, logos, maps, and floor plans using GPT-4o-mini vision

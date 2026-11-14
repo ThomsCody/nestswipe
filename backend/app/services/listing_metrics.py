@@ -21,6 +21,7 @@ SOURCES = frozenset(
         "barnes",
         "junot",
         "leboncoin",
+        "jinka",
     }
 )
 

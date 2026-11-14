@@ -54,7 +54,7 @@ async def import_listing_from_url(
     source = detect_source_from_url(url)
     if not source:
         raise ImportError(
-            "Unsupported domain. Supported: seloger, pap, leboncoin, consultantsimmobilier, barnes, junot."
+            "Unsupported domain. Supported: seloger, pap, leboncoin, consultantsimmobilier, barnes, junot, jinka."
         )
 
     # 2. Resolve API key: user's own, otherwise any household member's

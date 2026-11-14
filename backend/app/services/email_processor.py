@@ -40,6 +40,7 @@ SOURCES = {
     "barnes-international.com": "barnes",
     "no.reply@leboncoin.fr": "leboncoin",
     "junot.fr": "junot",
+    "jinka.fr": "jinka",
 }
 
 # Gmail may delay indexing emails by a few minutes after delivery.
