@@ -13,9 +13,9 @@ claim that Datadog has rescanned the changes or that production rollout is done.
 | `dockerfile-env-no-refer-envvar` | 5 | Frontend build ARG-to-ENV assignments; intentional build inputs, not undefined references. |
 | `dockercompose-hardcoded-credential-in-environment` | 4 | Fixed: require explicit local Compose credentials instead of insecure fallback values. |
 | `dockercompose-image-uses-latest-or-no-tag` | 2 | Fixed: pin local and production MinIO to the exact deployed image digest. |
-| `dockerfile-healthcheck-instruction-missing` | 4 | Runtime worker remediation; build/runtime validation and integration tracked below. |
-| `dockerfile-missing-user-instruction` | 3 | Runtime worker remediation; validate nonroot access to secrets, storage and listening ports. |
-| `dockerfile-use-recommended-flags-with-useradd` | 1 | Runtime worker remediation. |
+| `dockerfile-healthcheck-instruction-missing` | 4 | Fixed: four runtime HTTP healthchecks validated locally. |
+| `dockerfile-missing-user-instruction` | 3 | Fixed: nonroot backend, Caddy and standalone nginx; access and ports validated locally. |
+| `dockerfile-use-recommended-flags-with-useradd` | 1 | Fixed: browser useradd uses --no-log-init. |
 | `dockercompose-docker-socket-mounted-in-container` | 2 | Intentional local Datadog integration; residual host-control risk documented below. |
 | `dockercompose-privileged-ports-mapped-in-container` | 1 | Required Caddy public HTTP/HTTPS ports. |
 | `dockercompose-volume-has-sensitive-host-directory` | 1 | Scoped Datadog telemetry socket directory, not a broad host runtime mount. |
@@ -96,9 +96,35 @@ Completed for the Compose changes:
   bucket creation, upload, read/byte comparison, object deletion and bucket
   deletion passed. The test container was removed.
 
-Runtime Dockerfile integration, final repository tests, production deployment,
-post-deploy functional checks and fresh Datadog scan remain **pending** until
-recorded with evidence. A successful parse is not a production validation.
+Runtime validation completed on isolated local Colima containers:
+
+- Backend production/test, browser, Caddy and standalone frontend image builds
+  passed. Frontend `tsc` and Vite completed; existing bundle-size warning and
+  public browser-token build-argument advisory remain.
+- Full backend suite: **379 passed, 2 skipped**. Browser suite: **26 passed**.
+- Nonroot backend UID/GID1001 read mode0600 dummy secrets with production's
+  owner layout; migrations001–022 and HTTP startup/health passed against a
+  disposable PostgreSQL16 instance. Writable home and telemetry socket access
+  passed against dummy sockets with the production directory/socket modes.
+- Browser health, profile writes and actual Chromium startup passed using the
+  production `init: true`/shared-memory layout.
+- Nonroot Caddy served port80, proxied backend, reported healthy, wrote new
+  data/config volumes, served port443 using internal test certificates, and
+  retained those certificates across restart. No public ACME request was made.
+- Standalone final nginx now runs UID101 on **8080**, with writable PID/cache
+  paths. Static GET and backend proxy returned200 and Docker marked it healthy.
+  Consumers of this final image must map their host port to8080. The production
+  frontend-build target and local development target are unchanged.
+
+Caddy's existing production data/config volumes require a one-time ownership
+migration to1001 while preserving modes. New volumes inherit ownership from the
+image; subsequent normal deployments require no repeat migration. Save original
+ownership metadata for rollback, then verify real TLS/certificates after rollout.
+
+The signed runtime and Compose commits were integrated without conflicts.
+Production deployment, post-deploy functional checks and fresh Datadog scan
+remain **pending** until recorded with evidence. Local tests are not a production
+validation.
 
 ## Serialized release and rollback convention
 
