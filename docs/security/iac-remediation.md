@@ -1,0 +1,128 @@
+# IaC findings: 2026-11-15 remediation
+
+Datadog baseline: repository `github.com/ThomsCody/nestswipe`, branch `main`, commit
+`c17b00f666a5da14ab869ece7d901c883df28f8e`. The completed inventory contains **272
+findings: 10 high, 3 medium, 259 low**. This document records dispositions, not a
+claim that Datadog has rescanned the changes or that production rollout is done.
+
+## Disposition of all findings
+
+| Rule | Count | Disposition |
+| --- | ---: | --- |
+| `terraform-output-without-description` | 249 | Upstream module documentation findings; no security behavior to remediate. |
+| `dockerfile-env-no-refer-envvar` | 5 | Frontend build ARG-to-ENV assignments; intentional build inputs, not undefined references. |
+| `dockercompose-hardcoded-credential-in-environment` | 4 | Fixed: require explicit local Compose credentials instead of insecure fallback values. |
+| `dockercompose-image-uses-latest-or-no-tag` | 2 | Fixed: pin local and production MinIO to the exact deployed image digest. |
+| `dockerfile-healthcheck-instruction-missing` | 4 | Runtime worker remediation; build/runtime validation and integration tracked below. |
+| `dockerfile-missing-user-instruction` | 3 | Runtime worker remediation; validate nonroot access to secrets, storage and listening ports. |
+| `dockerfile-use-recommended-flags-with-useradd` | 1 | Runtime worker remediation. |
+| `dockercompose-docker-socket-mounted-in-container` | 2 | Intentional local Datadog integration; residual host-control risk documented below. |
+| `dockercompose-privileged-ports-mapped-in-container` | 1 | Required Caddy public HTTP/HTTPS ports. |
+| `dockercompose-volume-has-sensitive-host-directory` | 1 | Scoped Datadog telemetry socket directory, not a broad host runtime mount. |
+
+Total: **14 findings selected for remediation**, **254 non-security/documentation
+findings**, and **4 intentional integration exceptions**. No blanket suppression
+or scanner configuration change is used.
+
+The Terraform findings originate in transitive modules under the pinned Datadog
+OCI onboarding dependency, including regional-stack VCN outputs. Adding output
+descriptions would improve upstream documentation but would not change access,
+network exposure or credential handling. Do not fork or redeploy infrastructure
+solely to change these descriptions.
+
+The five frontend assignments consume build arguments declared in that stage.
+Public browser telemetry identifiers are intentionally compiled into the client;
+these are not server API keys. The runtime worker must retain the existing build
+argument behavior.
+
+## Compose fixes
+
+`POSTGRES_PASSWORD`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD` and `JWT_SECRET`
+now use required Compose interpolation. Continue supplying the configured env
+file (`docker compose --env-file deploy/.env ...`). Non-secret user/database
+name defaults remain. The test service shares these actual service settings;
+it is not a separate fixture with mocked authentication. Missing credentials
+fail during Compose configuration, before a container starts.
+
+This does not rotate any existing database or storage password. Existing local
+volumes still require their matching credentials; do not delete volumes to make
+a failed login disappear. No real credentials belong in this document or Git.
+
+Both MinIO services now use:
+
+```
+minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+```
+
+This is the exact existing production and local cached `linux/arm64` image,
+labelled `RELEASE.2025-09-07T16-13-09Z`. It changes selection, not the deployed
+server binary. Normal cache-aware pulling remains enabled. Registry manifest
+requests for the release/digest returned unauthorized/denied during validation.
+A fresh installation therefore needs registry access or a trusted saved copy of
+this exact image. Availability of an amd64 image was not established; do not
+silently replace this pin with `latest` or force cross-platform emulation.
+
+## Intentional integration exceptions
+
+- Local Datadog containers mount `/var/run/docker.sock:ro` for discovery and
+  container logs. A read-only filesystem mount does **not** restrict Docker API
+  operations; compromise of that trusted agent can control the Docker host.
+  This is local development configuration, not the production stack. Datadog's
+  [official socket rule](https://docs.datadoghq.com/security/default_rules/j9z-sms-f3m/)
+  explicitly recognizes its Agent images as using the socket by design, and its
+  [log collection documentation](https://docs.datadoghq.com/containers/docker/log/)
+  uses this mount. Removing it silently breaks monitoring; an unvalidated proxy
+  would relocate privileged access rather than prove it eliminated. Production
+  uses its independently managed host Agent. Retain this explicit residual risk.
+- Caddy ports 80 and 443 provide HTTP redirect/ACME and public HTTPS. Keep these
+  intentional entry points. Backend, PostgreSQL and MinIO publish no production
+  host ports.
+- Backend `/var/run/datadog:/var/run/datadog:ro` exposes only Agent telemetry
+  sockets. It does not expose `/var/run` generally or the Docker daemon socket.
+  Mounting the directory supports socket recreation after Agent restarts;
+  individual socket bind mounts can become stale. Nonroot backend still needs
+  permission to connect to the sockets. Validate telemetry after rollout.
+
+## Validation and rollout status
+
+Completed for the Compose changes:
+
+- Local Compose, local plus `docker-compose.dd.yml`, and production Compose
+  pass `docker compose ... config --quiet` with dummy environment values.
+- Each of the four required credential variables independently fails clearly
+  when omitted.
+- Exact pinned MinIO image resolves from local and production caches.
+- Disposable local MinIO container, dummy credentials, no production mounts:
+  bucket creation, upload, read/byte comparison, object deletion and bucket
+  deletion passed. The test container was removed.
+
+Runtime Dockerfile integration, final repository tests, production deployment,
+post-deploy functional checks and fresh Datadog scan remain **pending** until
+recorded with evidence. A successful parse is not a production validation.
+
+## Serialized release and rollback convention
+
+One designated release worker must continuously hold an exclusive remote
+`/home/ubuntu/nestswipe-deploy.lock` from **before rsync** until post-deploy checks
+or rollback completes. An SSH session can hold the lock using
+`flock -n /home/ubuntu/nestswipe-deploy.lock` around a shell that stays alive for
+the entire transaction; release only after the worker has finished. Every
+collaborating deployer must respect this same lock. The stock deployment script
+alone does not provide this serialization.
+
+The actual backup coordination lock is
+`/home/ubuntu/nestswipe-backups/.backup.lock`. The deployment's shared backup
+lock prevents overlap with the exclusive scheduled backup, but permits another
+deployment. Do not wrap the whole deployment in an additional held backup lock:
+the backup installer acquires its own exclusive lock and would deadlock.
+
+Before replacement, save the current source/configuration with file modes and
+ownership, immutable image IDs, and Caddy volume ownership metadata outside the
+rsync destination. Retain images without pruning. Nonroot Caddy may require
+ownership adjustment of its existing data/config volumes; save the old metadata
+before doing so. Confirm migration backward compatibility and preserve data
+volumes. On a regression, keep the deployment lock, restore prior configuration,
+images and ownership as needed, recreate affected services, and repeat health
+checks. Never use `down -v` or restore old database contents for an application
+rollback. Release gates include API health, a database-backed read, photo/storage
+access, browser readiness and host-Agent/telemetry health.

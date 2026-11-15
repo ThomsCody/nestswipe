@@ -3,7 +3,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-rosen}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rosen_secret}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the Compose env file}
       POSTGRES_DB: ${POSTGRES_DB:-nestswipe}
     ports:
       - "5432:5432"
@@ -18,11 +18,11 @@ services:
       com.datadoghq.ad.logs: '[{"source": "postgresql", "service": "nestswipe-db"}]'
 
   minio:
-    image: minio/minio
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in the Compose env file}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in the Compose env file}
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -37,12 +37,12 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rosen}:${POSTGRES_PASSWORD:-rosen_secret}@postgres:5432/${POSTGRES_DB:-nestswipe}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rosen}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the Compose env file}@postgres:5432/${POSTGRES_DB:-nestswipe}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in the Compose env file}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in the Compose env file}
       MINIO_BUCKET: ${MINIO_BUCKET:-listing-photos}
-      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-random-secret}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the Compose env file}
       EMAIL_POLL_INTERVAL_MINUTES: ${EMAIL_POLL_INTERVAL_MINUTES:-5}
       PROXY_HOST: ""
       PROXY_USER: ""
@@ -92,12 +92,12 @@ services:
     volumes:
       - ./backend:/app
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rosen}:${POSTGRES_PASSWORD:-rosen_secret}@postgres:5432/${POSTGRES_DB:-nestswipe}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rosen}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the Compose env file}@postgres:5432/${POSTGRES_DB:-nestswipe}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in the Compose env file}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in the Compose env file}
       MINIO_BUCKET: ${MINIO_BUCKET:-listing-photos}
-      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-random-secret}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the Compose env file}
     depends_on:
       postgres:
         condition: service_healthy
