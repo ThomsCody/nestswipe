@@ -15,11 +15,33 @@ PHOTO_CDNS = [
 
 # Patterns to exclude (logos, icons, tracking pixels, etc.)
 EXCLUDE_PATTERNS = [
-    "logo", "icon", "pixel", "tracking", "spacer", "blank",
-    "badge", "favicon", "sprite", "arrow", "button", "banner",
-    "footer", "header", "social", "facebook", "twitter",
-    "instagram", "linkedin", "google", "apple", "play-store",
-    "app-store", "avatar", "profile", "tampon", "contact",
+    "logo",
+    "icon",
+    "pixel",
+    "tracking",
+    "spacer",
+    "blank",
+    "badge",
+    "favicon",
+    "sprite",
+    "arrow",
+    "button",
+    "banner",
+    "footer",
+    "header",
+    "social",
+    "facebook",
+    "twitter",
+    "instagram",
+    "linkedin",
+    "google",
+    "apple",
+    "play-store",
+    "app-store",
+    "avatar",
+    "profile",
+    "tampon",
+    "contact",
     "emails/images",
 ]
 
@@ -46,15 +68,16 @@ def _is_property_photo(url: str) -> bool:
 def _normalize_url(url: str) -> str:
     """Remove size constraints from URLs to get higher resolution images."""
     # SeLoger: replace /s/crop/NNNxNNN/ or /s/width/NNN/ with high-res variant
-    url = re.sub(r'/s/crop/\d+x\d+/', '/s/width/1280/', url)
-    url = re.sub(r'/s/width/\d+/', '/s/width/1280/', url)
+    normalized = url
+    normalized = re.sub(r"/s/crop/\d+x\d+/", "/s/width/1280/", normalized)
+    normalized = re.sub(r"/s/width/\d+/", "/s/width/1280/", normalized)
     # Remove h=xxx&w=xxx query params
-    url = re.sub(r'[&?]h=\d+', '', url)
-    url = re.sub(r'[&?]w=\d+', '', url)
+    normalized = re.sub(r"[&?]h=\d+", "", normalized)
+    normalized = re.sub(r"[&?]w=\d+", "", normalized)
     # Clean up double && or trailing &
-    url = re.sub(r'&&+', '&', url)
-    url = re.sub(r'[&?]$', '', url)
-    return url
+    normalized = re.sub(r"&&+", "&", normalized)
+    normalized = re.sub(r"[&?]$", "", normalized)
+    return normalized
 
 
 def extract_photos_from_html(html: str, source: str) -> list[str]:

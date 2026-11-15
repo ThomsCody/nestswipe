@@ -1,4 +1,5 @@
 import io
+import logging
 import uuid
 from datetime import timedelta
 
@@ -8,6 +9,9 @@ from minio import Minio
 from PIL import Image
 
 from app.config import settings
+
+
+logger = logging.getLogger(__name__)
 
 
 def get_minio_client() -> Minio:
@@ -31,14 +35,16 @@ async def download_photo(url: str) -> bytes | None:
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(url, follow_redirects=True)
-            if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("image"):
+            if resp.status_code == 200 and resp.headers.get(
+                "content-type", ""
+            ).startswith("image"):
                 img = Image.open(io.BytesIO(resp.content))
                 w, h = img.size
                 if w < MIN_PHOTO_DIMENSION or h < MIN_PHOTO_DIMENSION:
                     return None
                 return resp.content
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Photo download failed: error_type=%s", type(exc).__name__)
     return None
 
 

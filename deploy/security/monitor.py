@@ -101,10 +101,10 @@ def download_check(now, receipt=RECEIPT):
 
 
 def send(name, status, message):
-    message = message.replace("\n", " ").replace("|", "/")[:1800]
+    safe_message = message.replace("\n", " ").replace("|", "/")[:1800]
     packet = (
         f"_sc|nestswipe.maintenance.{name}|{status}|h:nestswipe-vnic"
-        f"|#env:prod,service:nestswipe-security|m:{message}"
+        f"|#env:prod,service:nestswipe-security|m:{safe_message}"
     )
     with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as client:
         client.connect("/var/run/datadog/dsd.socket")

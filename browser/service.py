@@ -61,12 +61,15 @@ NONESSENTIAL_HOSTS = frozenset(
 
 def safe_title(title: str) -> str:
     """Keep useful challenge titles without echoing URLs or embedded identifiers."""
-    title = re.sub(r"https?://\S+|\S+@\S+", "[redacted]", title)
-    title = re.sub(
-        r"(?i)\b(token|password|secret|key|email|qs)\s*[=:]\s*\S+", "[redacted]", title
+    redacted = title
+    redacted = re.sub(r"https?://\S+|\S+@\S+", "[redacted]", redacted)
+    redacted = re.sub(
+        r"(?i)\b(token|password|secret|key|email|qs)\s*[=:]\s*\S+",
+        "[redacted]",
+        redacted,
     )
-    title = re.sub(r"[A-Za-z0-9_-]{24,}", "[redacted]", title)
-    return " ".join(title.split())[:160]
+    redacted = re.sub(r"[A-Za-z0-9_-]{24,}", "[redacted]", redacted)
+    return " ".join(redacted.split())[:160]
 
 
 def diagnostic_directory() -> Path:
@@ -219,7 +222,7 @@ def clear_stale_chromium_locks(profile: Path):
         try:
             os.kill(int(pid), 0)
         except ProcessLookupError:
-            pass
+            logger.info("Removing Chromium locks for an exited local process")
         except PermissionError:
             return
         else:
@@ -358,9 +361,7 @@ class Renderer:
                 request.is_navigation_request()
                 and request.frame == page.main_frame
                 and not allowed_url(request.url)
-            ):
-                await route.abort()
-            elif skip_resource(request.url, request.resource_type):
+            ) or skip_resource(request.url, request.resource_type):
                 await route.abort()
             else:
                 await route.continue_()

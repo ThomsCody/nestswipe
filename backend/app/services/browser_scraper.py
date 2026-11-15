@@ -255,16 +255,19 @@ def _is_valid_photo(url: str, source: str) -> bool:
 def _normalize_photo_url(url: str) -> str:
     """Remove size constraints from URLs to get higher resolution images."""
     # SeLoger: replace /s/crop/NNNxNNN/ or /s/width/NNN/ with high-res variant
-    url = re.sub(r"/s/crop/\d+x\d+/", "/s/width/1280/", url)
-    url = re.sub(r"/s/width/\d+/", "/s/width/1280/", url)
+    normalized = url
+    normalized = re.sub(r"/s/crop/\d+x\d+/", "/s/width/1280/", normalized)
+    normalized = re.sub(r"/s/width/\d+/", "/s/width/1280/", normalized)
     # Remove h=xxx&w=xxx query params
-    url = re.sub(r"[&?]h=\d+", "", url)
-    url = re.sub(r"[&?]w=\d+", "", url)
-    url = re.sub(r"&&+", "&", url)
-    url = re.sub(r"[&?]$", "", url)
+    normalized = re.sub(r"[&?]h=\d+", "", normalized)
+    normalized = re.sub(r"[&?]w=\d+", "", normalized)
+    normalized = re.sub(r"&&+", "&", normalized)
+    normalized = re.sub(r"[&?]$", "", normalized)
     # Apimo: prefer -original over -medium/-big variants
-    url = re.sub(r"-(?:medium|big)\.(jpe?g|png|webp)", r"-original.\1", url)
-    return url
+    normalized = re.sub(
+        r"-(?:medium|big)\.(jpe?g|png|webp)", r"-original.\1", normalized
+    )
+    return normalized
 
 
 def _extract_photos_from_html(
@@ -509,7 +512,7 @@ def _browser_listing_url(url: str, source: str, *, tracking: bool = False) -> bo
                 )
             )
     except ValueError:
-        pass
+        return False
     return False
 
 
@@ -610,7 +613,7 @@ async def _scrape_browser(url: str, source: str) -> ScrapedListing | None:
                 }:
                     diagnostic["challenge"] = detail["challenge"]
             except (ValueError, TypeError, AttributeError):
-                pass
+                diagnostic["browser_diagnostic_invalid"] = True
         logger.warning(
             "Rendered fallback failed: source=%s error_type=%s",
             source,

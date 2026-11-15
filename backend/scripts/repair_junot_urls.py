@@ -40,6 +40,33 @@ def authenticated_listing_url(bare: str, authenticated: str) -> str:
     )
 
 
+async def resolve_email_authentication(url: str) -> str | None:
+    """Follow only the bounded, allowed listing redirect chain."""
+    current_url = url
+    async with AsyncSession(impersonate="chrome") as client:
+        for _ in range(6):
+            parsed = urlsplit(current_url)
+            if parsed.scheme != "https" or parsed.hostname not in {
+                "r.info.junot.fr",
+                "ap.immo",
+            }:
+                break
+            params = parse_qs(parsed.query)
+            if parsed.hostname == "ap.immo" and params.get("u") and params.get("p"):
+                return current_url
+            r = await client.get(current_url, allow_redirects=False, timeout=30)
+            if r.status_code not in {
+                301,
+                302,
+                303,
+                307,
+                308,
+            } or not r.headers.get("location"):
+                break
+            current_url = urljoin(current_url, r.headers["location"])
+    return None
+
+
 async def email_authentication(service):
     page = None
     while True:
@@ -66,32 +93,9 @@ async def email_authentication(service):
                 if text.casefold() not in {"lire la suite", "découvrir le bien"}:
                     continue
                 # Only listing buttons, never preference/unsubscribe actions.
-                async with AsyncSession(impersonate="chrome") as client:
-                    for _ in range(6):
-                        parsed = urlsplit(url)
-                        if parsed.scheme != "https" or parsed.hostname not in {
-                            "r.info.junot.fr",
-                            "ap.immo",
-                        }:
-                            break
-                        params = parse_qs(parsed.query)
-                        if (
-                            parsed.hostname == "ap.immo"
-                            and params.get("u")
-                            and params.get("p")
-                        ):
-                            yield url
-                            break
-                        r = await client.get(url, allow_redirects=False, timeout=30)
-                        if r.status_code not in {
-                            301,
-                            302,
-                            303,
-                            307,
-                            308,
-                        } or not r.headers.get("location"):
-                            break
-                        url = urljoin(url, r.headers["location"])
+                authenticated = await resolve_email_authentication(url)
+                if authenticated:
+                    yield authenticated
         page = response.get("nextPageToken")
         if not page:
             break

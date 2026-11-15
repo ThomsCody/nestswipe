@@ -15,7 +15,12 @@ from sqlalchemy import select, text
 
 from app.database import engine, async_session
 from app.models.listing import ListingPhoto
-from app.services.photo_storage import download_photo, get_minio_client, upload_photo, ensure_bucket
+from app.services.photo_storage import (
+    download_photo,
+    get_minio_client,
+    upload_photo,
+    ensure_bucket,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -23,9 +28,10 @@ logger = logging.getLogger(__name__)
 
 def normalize_seloger_url(url: str) -> str:
     """Replace SeLoger crop/width path with high-res variant."""
-    url = re.sub(r"/s/crop/\d+x\d+/", "/s/width/1280/", url)
-    url = re.sub(r"/s/width/\d+/", "/s/width/1280/", url)
-    return url
+    normalized = url
+    normalized = re.sub(r"/s/crop/\d+x\d+/", "/s/width/1280/", normalized)
+    normalized = re.sub(r"/s/width/\d+/", "/s/width/1280/", normalized)
+    return normalized
 
 
 async def main():
@@ -62,8 +68,12 @@ async def main():
             # Delete old object
             try:
                 minio_client.remove_object("listing-photos", old_key)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "Old photo cleanup failed: photo_id=%s error_type=%s",
+                    photo.id,
+                    type(exc).__name__,
+                )
 
             upgraded += 1
             if upgraded % 20 == 0:
@@ -71,7 +81,12 @@ async def main():
                 await db.commit()
 
         await db.commit()
-        logger.info("Done: %d upgraded, %d failed out of %d total", upgraded, failed, len(photos))
+        logger.info(
+            "Done: %d upgraded, %d failed out of %d total",
+            upgraded,
+            failed,
+            len(photos),
+        )
 
     await engine.dispose()
 

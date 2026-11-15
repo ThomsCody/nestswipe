@@ -79,14 +79,9 @@ def _build_query(last_poll: datetime | None) -> str:
 def _detect_source(from_header: str) -> str:
     from_lower = from_header.lower()
     for key, name in SOURCES.items():
-        if "@" in key:
-            # Full email address match — avoids matching other subdomains
-            # (e.g. messagerie.leboncoin.fr must NOT match)
-            if key in from_lower:
-                return name
-        else:
-            if key in from_lower:
-                return name
+        # Keys may be full email addresses or provider domains.
+        if key in from_lower:
+            return name
     return "unknown"
 
 
@@ -661,8 +656,8 @@ async def reprocess_emails(user: User, db: AsyncSession, email_ids: list[str]) -
     ensure_bucket(minio_client)
 
     processed = 0
-    email_ids = list(dict.fromkeys(email_ids))
-    for index, email_id in enumerate(email_ids):
+    unique_email_ids = list(dict.fromkeys(email_ids))
+    for index, email_id in enumerate(unique_email_ids):
         try:
             msg = await asyncio.to_thread(_gmail_get_message, service, email_id)
         except Exception:
@@ -675,7 +670,7 @@ async def reprocess_emails(user: User, db: AsyncSession, email_ids: list[str]) -
             msg,
             minio_client,
             force=True,
-            remaining_emails=len(email_ids) - index,
+            remaining_emails=len(unique_email_ids) - index,
         )
 
     return processed
