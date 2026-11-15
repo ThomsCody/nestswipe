@@ -3,7 +3,7 @@ FROM python:3.14.9-slim-trixie@sha256:35caba83af2fe6da9a5d922f9b0156f21d1246a482
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 # Preserve the existing persistent profile's owner when replacing the Playwright image.
-RUN groupadd --gid 1001 pwuser && useradd --uid 1001 --gid 1001 --create-home pwuser
+RUN groupadd --gid 1001 pwuser && useradd --no-log-init --uid 1001 --gid 1001 --create-home pwuser
 
 WORKDIR /app
 COPY requirements.txt .
@@ -16,4 +16,6 @@ RUN pip install --no-cache-dir --upgrade pip==26.2.2 && \
 COPY service.py test_service.py ./
 USER pwuser
 ENV PROFILE_DIR=/data/profile
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).close()"]
 CMD ["xvfb-run", "-a", "uvicorn", "service:app", "--host", "0.0.0.0", "--port", "8000"]
