@@ -14,6 +14,7 @@ from service import (
     Renderer,
     allowed_url,
     proxy_config,
+    proxy_credential,
     skip_resource,
     render,
     RenderRequest,
@@ -27,6 +28,31 @@ URL = "https://www.seloger.com/annonce/achat/paris/267446L6C3DU"
 
 
 class UrlTests(unittest.TestCase):
+    def test_proxy_uses_files_instead_of_stale_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            password = Path(directory) / "password"
+            password.write_text("test-only-$password ")
+            with patch.dict(
+                os.environ,
+                {"PROXY_PASSWORD": "stale", "PROXY_PASSWORD_FILE": str(password)},
+                clear=True,
+            ):
+                self.assertEqual(
+                    proxy_credential("PROXY_PASSWORD"), "test-only-$password "
+                )
+
+    def test_missing_proxy_file_fails_instead_of_using_stale_environment(self):
+        with patch.dict(
+            os.environ,
+            {
+                "PROXY_PASSWORD": "stale",
+                "PROXY_PASSWORD_FILE": "/nonexistent/test-only-secret",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "PROXY_PASSWORD_FILE"):
+                proxy_credential("PROXY_PASSWORD")
+
     def test_previous_container_locks_removed_without_losing_session(self):
         with tempfile.TemporaryDirectory() as directory:
             profile = Path(directory)

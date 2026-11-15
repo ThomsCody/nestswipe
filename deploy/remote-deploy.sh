@@ -17,6 +17,10 @@ fi
 # Check before touching application containers; never reinstall/reset the Agent.
 bash datadog/check-host-agent.sh
 
+# Materialize the existing credentials without printing or rotating them.
+# This must happen before any Compose command starts replacement containers.
+python3 provision-secrets.py --env-file .env --output-dir secrets
+
 echo "==> Installing backup scripts and schedule ..."
 sudo -n bash backup/install-production.sh
 

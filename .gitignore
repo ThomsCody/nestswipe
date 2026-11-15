@@ -23,6 +23,7 @@ frontend/dist/
 oauth.json
 deploy/.env
 deploy/oauth.json
+/deploy/secrets/
 
 # IDE
 .idea/

@@ -3,7 +3,43 @@ import os
 from pathlib import Path
 
 from pydantic import SecretStr
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
+
+
+SECRET_FIELDS = {
+    "database_url",
+    "minio_root_user",
+    "minio_root_password",
+    "jwt_secret",
+    "proxy_user",
+    "proxy_password",
+    "decodo_api_key",
+    "sendgrid_api_key",
+    "google_client_secret",
+}
+REQUIRED_SECRETS = {
+    "database_url",
+    "minio_root_user",
+    "minio_root_password",
+    "jwt_secret",
+}
+
+
+def file_secrets() -> dict[str, str]:
+    """Explicit *_FILE settings take precedence and never fall back on read errors."""
+    values = {}
+    for field in SECRET_FIELDS:
+        variable = field.upper() + "_FILE"
+        if variable not in os.environ:
+            continue
+        try:
+            value = Path(os.environ[variable]).read_bytes().decode("utf-8")
+        except (OSError, ValueError):
+            raise RuntimeError(f"Cannot read secret configured by {variable}") from None
+        if not value and field in REQUIRED_SECRETS:
+            raise RuntimeError(f"Secret configured by {variable} must not be empty")
+        values[field] = value
+    return values
 
 
 class Settings(BaseSettings):
@@ -64,6 +100,23 @@ class Settings(BaseSettings):
     oauth_json_path: str = "/app/oauth.json"
 
     model_config = {"env_file": ".env"}
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ):
+        return (
+            init_settings,
+            file_secrets,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+        )
 
     def load_oauth_json(self) -> None:
         """Load Google OAuth credentials from oauth.json if not set via env."""

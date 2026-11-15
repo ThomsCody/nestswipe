@@ -17,6 +17,7 @@ rsync -avz --delete \
   --exclude '/infra/' \
   --exclude 'deploy/.env' \
   --exclude 'deploy/oauth.json' \
+  --exclude '/deploy/secrets/' \
   --exclude '.env' \
   --exclude '.env.reboot-key.tmp' \
   --exclude 'oauth.json' \

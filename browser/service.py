@@ -174,9 +174,18 @@ def skip_resource(url: str, resource_type: str) -> bool:
     return resource_type in {"image", "media", "font"}
 
 
+def proxy_credential(name: str) -> str:
+    if name + "_FILE" not in os.environ:
+        return os.environ.get(name, "")
+    try:
+        return Path(os.environ[name + "_FILE"]).read_bytes().decode("utf-8")
+    except (OSError, ValueError):
+        raise RuntimeError(f"Cannot read secret configured by {name}_FILE") from None
+
+
 def proxy_config(profile: Path) -> dict | None:
-    username = os.environ.get("PROXY_USER", "")
-    password = os.environ.get("PROXY_PASSWORD", "")
+    username = proxy_credential("PROXY_USER")
+    password = proxy_credential("PROXY_PASSWORD")
     if not username or not password:
         return None
     # Preserve the same Decodo session across browser/process restarts. Once a
