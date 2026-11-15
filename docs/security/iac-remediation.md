@@ -121,9 +121,22 @@ migration to1001 while preserving modes. New volumes inherit ownership from the
 image; subsequent normal deployments require no repeat migration. Save original
 ownership metadata for rollback, then verify real TLS/certificates after rollout.
 
+The one-shot backend test stage declares `HEALTHCHECK NONE`; it exits with the
+test result rather than pretending to run an HTTP service. Runtime HTTP checks
+are liveness checks, not end-to-end dependency tests; the separate functional
+checks below remain mandatory.
+
 The signed runtime and Compose commits were integrated without conflicts.
-Production deployment, post-deploy functional checks and fresh Datadog scan
-remain **pending** until recorded with evidence. Local tests are not a production
+Official Datadog IaC scanner1.20.6, with the same rule bundle for both scans
+(SHA256 `545631ed7b64b4b4c50ad29012216bf61cf3ef5ecbd211ef9527ef0d5f0be1e0`),
+executed1200 rules on14 files: baseline39 findings, integrated25. All14 selected
+findings disappeared; no new rule/file findings appeared. The remaining25 are
+nine direct intentional/documentation exclusions plus16 unchanged CI findings
+outside the supplied hosted view. The249 transitive Terraform findings were not
+fetched by this local scan; hosted follow-up remains necessary.
+
+Production deployment, post-deploy functional checks and fresh hosted Datadog
+scan remain **pending** until recorded with evidence. Local tests are not a production
 validation.
 
 ## Serialized release and rollback convention
