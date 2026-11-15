@@ -31,4 +31,5 @@ COPY . .
 
 USER 1001:1001
 
+HEALTHCHECK NONE
 CMD ["python", "-m", "pytest", "tests/", "-v", "--tb=short", "-o", "cache_dir=/tmp/pytest-cache"]
