@@ -319,3 +319,32 @@ pytest -v
 63 tests covering API endpoints, service logic (duplicate detection, photo scraping), and the full email processing pipeline with mocked external services.
 
 Tests run automatically on every push/PR to `main` via GitHub Actions.
+
+### Datadog Test Optimization
+
+The four test jobs in `.github/workflows/test.yml` use Datadog's Test Optimization
+action for native pytest, unittest, and Vitest instrumentation. Test results go to
+`datadoghq.com` with `DD_ENV=ci` and services `nestswipe-backend`,
+`nestswipe-browser`, `nestswipe-maintenance`, and `nestswipe-frontend`.
+The action installs the CI instrumentation; no local test setup changes are needed.
+
+Create or reuse an API key from the personal **ThomasDogFooding** organization in
+[Datadog API key settings](https://app.datadoghq.com/organization-settings/api-keys),
+then save it as the repository's `DD_API_KEY`
+[GitHub Actions secret](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets).
+See the [Datadog API key documentation](https://docs.datadoghq.com/account_management/api-app-keys/).
+Keep the key out of source files and logs. Its availability and authentication
+must be confirmed in CI.
+
+When the secret is unavailable (including pull requests from forks), Datadog setup
+is skipped and all tests still run. Backend tracing is enabled only when the
+secret is available; frontend tracer loading is limited to the Vitest step.
+
+After publishing these changes, inspect the next **Tests** workflow run on a push
+or pull request to `main`. Confirm all four test jobs pass with the Datadog setup
+step enabled, then check the matching revision and CI run in
+[Test Optimization Explorer](https://app.datadoghq.com/ci/test/runs?query=@git.repository.name:thomscody/nestswipe).
+Confirm the expected suites, counts, and outcomes for each service before treating
+onboarding as verified. A passing run with Datadog setup skipped does not verify
+ingestion. Test selection and other optional optimization features are not enabled
+by this configuration.
