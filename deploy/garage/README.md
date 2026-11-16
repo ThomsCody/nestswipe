@@ -33,7 +33,16 @@ before copying. This deployment uses `listing-photos`.
 
 1. Build/test locally, review changes, then synchronize reviewed source. Preserve
    all production secrets and keep migration evidence outside the rsynced tree.
-2. Run `bash deploy/garage/cutover.sh` on the VM. It takes the exclusive backup
+   If the installed backup job still targets MinIO, pause only its cron entry
+   under the same exclusive backup lock before cutover, saving the original.
+   Restore the schedule with the Garage-aware installer after verification;
+   restore the original schedule instead if rolling back to MinIO. This covers
+   the gap between cutover and ordinary deployment.
+2. The backup root is root-owned. Create a protected writable evidence parent
+   once with `sudo install -d -o ubuntu -g ubuntu -m 700
+   /home/ubuntu/nestswipe-backups/garage-migrations`. Set
+   `NESTSWIPE_MIGRATION_EVIDENCE` to a **new child directory** there when running
+   `bash deploy/garage/cutover.sh` on the VM. It takes the exclusive backup
    lock, prepares Garage/backend, stops ingress and backend, snapshots PostgreSQL
    and MinIO, copies all objects, checks every byte and metadata field, records DB
    reference coverage and starts the backend with `SCHEDULER_ENABLED=false`.
