@@ -17,9 +17,9 @@ from app.database import engine, async_session
 from app.models.listing import ListingPhoto
 from app.services.photo_storage import (
     download_photo,
-    get_minio_client,
+    get_storage,
     upload_photo,
-    ensure_bucket,
+    ensure_storage,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -35,8 +35,8 @@ def normalize_seloger_url(url: str) -> str:
 
 
 async def main():
-    minio_client = get_minio_client()
-    ensure_bucket(minio_client)
+    storage = get_storage()
+    ensure_storage(storage)
 
     async with async_session() as db:
         result = await db.execute(
@@ -61,13 +61,13 @@ async def main():
 
             # Upload new image, replace s3_key
             old_key = photo.s3_key
-            new_key = upload_photo(minio_client, img_bytes)
+            new_key = upload_photo(storage, img_bytes)
             photo.s3_key = new_key
             photo.original_url = new_url
 
             # Delete old object
             try:
-                minio_client.remove_object("listing-photos", old_key)
+                storage.delete(old_key)
             except Exception as exc:
                 logger.warning(
                     "Old photo cleanup failed: photo_id=%s error_type=%s",

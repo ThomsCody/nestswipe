@@ -33,19 +33,6 @@ services:
       retries: 12
     restart: unless-stopped
 
-  minio:
-    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-    profiles: ["rollback"]
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in the Compose env file}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in the Compose env file}
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - minio_data:/data
-
   backend:
     build:
       context: ./backend
@@ -55,12 +42,13 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rosen}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the Compose env file}@postgres:5432/${POSTGRES_DB:-nestswipe}
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-garage:3900}
-      MINIO_REGION: ${MINIO_REGION:-garage}
+      STORAGE_BACKEND: s3
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-garage:3900}
+      STORAGE_REGION: ${STORAGE_REGION:-garage}
       SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
-      MINIO_ROOT_USER_FILE: /run/secrets/garage_access_key
-      MINIO_ROOT_PASSWORD_FILE: /run/secrets/garage_secret_key
-      MINIO_BUCKET: ${MINIO_BUCKET:-listing-photos}
+      STORAGE_ACCESS_KEY_FILE: /run/secrets/garage_access_key
+      STORAGE_SECRET_KEY_FILE: /run/secrets/garage_secret_key
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-listing-photos}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the Compose env file}
       EMAIL_POLL_INTERVAL_MINUTES: ${EMAIL_POLL_INTERVAL_MINUTES:-5}
       PROXY_HOST: ""
@@ -115,12 +103,13 @@ services:
       - ./backend:/app
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rosen}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the Compose env file}@postgres:5432/${POSTGRES_DB:-nestswipe}
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-garage:3900}
-      MINIO_REGION: ${MINIO_REGION:-garage}
+      STORAGE_BACKEND: s3
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-garage:3900}
+      STORAGE_REGION: ${STORAGE_REGION:-garage}
       SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
-      MINIO_ROOT_USER_FILE: /run/secrets/garage_access_key
-      MINIO_ROOT_PASSWORD_FILE: /run/secrets/garage_secret_key
-      MINIO_BUCKET: ${MINIO_BUCKET:-listing-photos}
+      STORAGE_ACCESS_KEY_FILE: /run/secrets/garage_access_key
+      STORAGE_SECRET_KEY_FILE: /run/secrets/garage_secret_key
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-listing-photos}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the Compose env file}
     secrets:
       - garage_access_key
@@ -152,7 +141,6 @@ volumes:
   garage_data:
   garage_meta:
   pgdata:
-  minio_data:
 
 secrets:
   garage_rpc_secret:

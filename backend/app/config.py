@@ -8,8 +8,8 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 
 SECRET_FIELDS = {
     "database_url",
-    "minio_root_user",
-    "minio_root_password",
+    "storage_access_key",
+    "storage_secret_key",
     "jwt_secret",
     "proxy_user",
     "proxy_password",
@@ -19,8 +19,8 @@ SECRET_FIELDS = {
 }
 REQUIRED_SECRETS = {
     "database_url",
-    "minio_root_user",
-    "minio_root_password",
+    "storage_access_key",
+    "storage_secret_key",
     "jwt_secret",
 }
 
@@ -48,13 +48,16 @@ class Settings(BaseSettings):
         "postgresql+psycopg://rosen:rosen_secret@postgres:5432/nestswipe"
     )
 
-    # MinIO
-    minio_endpoint: str = "minio:9000"
-    minio_root_user: str = "minioadmin"
-    minio_root_password: str = "minioadmin"
-    minio_bucket: str = "listing-photos"
-    minio_secure: bool = False
-    minio_region: str | None = None
+    # Provider-neutral storage; Garage uses the S3 backend.
+    storage_backend: str = "s3"
+    storage_options_file: str | None = None
+    storage_root: str = "/"
+    storage_endpoint: str = "garage:3900"
+    storage_access_key: str = ""
+    storage_secret_key: str = ""
+    storage_bucket: str = "listing-photos"
+    storage_secure: bool = False
+    storage_region: str = "garage"
     scheduler_enabled: bool = True
 
     # JWT

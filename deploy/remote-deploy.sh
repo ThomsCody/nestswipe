@@ -25,7 +25,7 @@ python3 garage/provision.py --directory secrets
 
 # An ordinary deploy must never switch an existing installation to an empty store.
 if docker inspect deploy-minio-1 >/dev/null 2>&1 && [[ ! -s secrets/garage-migration-verified ]]; then
-  echo "ERROR: complete garage/cutover.sh and validate images before ordinary deployment."
+  echo "ERROR: complete the historical Garage migration and validate images before ordinary deployment."
   exit 1
 fi
 
@@ -43,7 +43,7 @@ docker compose -f docker-compose.prod.yml build
 
 echo "==> Preparing Garage ..."
 docker compose -f docker-compose.prod.yml up -d --wait garage
-python3 garage/init.py --directory secrets --bucket "${MINIO_BUCKET:-listing-photos}"
+python3 garage/init.py --directory secrets --bucket "${STORAGE_BUCKET:-listing-photos}"
 
 echo "==> Running database migrations ..."
 docker compose -f docker-compose.prod.yml run --rm backend \

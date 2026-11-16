@@ -5,7 +5,7 @@ import hashlib
 import hmac
 import json
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import jwt
 import pytest
@@ -41,16 +41,17 @@ async def test_existing_hs256_token_still_authenticates(client, test_user):
 
 async def test_existing_hs256_photo_token_still_works(client, test_user):
     storage = MagicMock()
-    storage.get_object.return_value.read.return_value = b"fixture-photo"
-    storage.get_object.return_value.headers = {"Content-Type": "image/jpeg"}
-    with patch("app.api.photos.get_minio_client", return_value=storage):
+    operator = storage.to_async_operator.return_value
+    operator.read = AsyncMock(return_value=b"fixture-photo")
+    operator.stat = AsyncMock(return_value=MagicMock(content_type="image/jpeg"))
+    with patch("app.api.photos.get_storage", return_value=storage):
         response = await client.get(
             "/api/v1/photos/photos/fixture.jpg",
             params={"token": legacy_token(test_user.id)},
         )
     assert response.status_code == 200
     assert response.content == b"fixture-photo"
-    storage.get_object.return_value.release_conn.assert_called_once()
+    operator.read.assert_awaited_once_with("photos/fixture.jpg")
 
 
 @pytest.mark.parametrize(
@@ -99,7 +100,7 @@ async def test_invalid_tokens_rejected_before_storage(client, test_user, case):
         "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
     )
     assert response.status_code == 401
-    with patch("app.api.photos.get_minio_client") as storage:
+    with patch("app.api.photos.get_storage") as storage:
         response = await client.get(
             "/api/v1/photos/photos/fixture.jpg", params={"token": token}
         )

@@ -250,8 +250,8 @@ async def test_reimport_refreshes_photos(
             "app.services.import_listing.classify_photos",
             AsyncMock(return_value=(photo_data, 0, 0)),
         ),
-        patch("app.services.import_listing.get_minio_client") as minio,
-        patch("app.services.import_listing.ensure_bucket"),
+        patch("app.services.import_listing.get_storage") as storage,
+        patch("app.services.import_listing.ensure_storage"),
         patch(
             "app.services.import_listing.upload_photo",
             return_value="photos/restored.jpg",
@@ -269,9 +269,9 @@ async def test_reimport_refreshes_photos(
     assert [photo.s3_key for photo in photos] == expected_keys
     assert upload.call_count == (1 if expected_keys == ["photos/restored.jpg"] else 0)
     if existing_key == "photos/real.jpg" and download_succeeds:
-        minio.return_value.remove_object.assert_called_once()
+        storage.return_value.delete.assert_called_once()
     else:
-        minio.return_value.remove_object.assert_not_called()
+        storage.return_value.delete.assert_not_called()
     if upload.called:
         assert photos[0].original_url == photo_url
         assert photos[0].phash == "1234"
@@ -306,8 +306,8 @@ async def test_scraped_contact_overrides_llm_and_prefills_favorite(
             "app.services.import_listing.extract_listing_from_page",
             AsyncMock(return_value=(extracted, 0, 0)),
         ),
-        patch("app.services.import_listing.get_minio_client"),
-        patch("app.services.import_listing.ensure_bucket"),
+        patch("app.services.import_listing.get_storage"),
+        patch("app.services.import_listing.ensure_storage"),
     ):
         result = await import_listing_from_url(url, test_user, db_session)
     assert result.listing.contact_phone == "06 14 59 87 04"

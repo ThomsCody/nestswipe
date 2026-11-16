@@ -16,8 +16,6 @@ EXPRESSIONS = {
         "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/"
         "${POSTGRES_DB:?POSTGRES_DB is required}"
     ),
-    "minio_root_user": "${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}",
-    "minio_root_password": "${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}",
     "jwt_secret": "${JWT_SECRET:?JWT_SECRET is required}",
     "decodo_api_key": "${DECODO_API_KEY:-}",
     "proxy_user": "${PROXY_USER:-}",

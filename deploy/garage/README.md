@@ -1,77 +1,51 @@
-# Garage storage migration
+# Garage object storage
 
-Garage v2.5.0 is pinned by manifest digest. The MinIO Python SDK remains the S3
-client; `MINIO_*` configuration names are retained to keep the change bounded.
-`MINIO_REGION=garage` is explicit. Both Garage metadata and object-data volumes
-are required for recovery. One node preserves the previous single-VM failure
-exposure; it is not redundant storage.
+Garage v2.5.0 is pinned by manifest digest. Apache OpenDAL 0.47.12 provides the
+provider-neutral Python storage API; the application no longer installs MinIO or
+boto3. Python 3.14 on Linux ARM64 uses OpenDAL's published cp311-abi3 wheel.
 
-## Initial local setup
+`STORAGE_BACKEND=s3` selects Garage's S3-compatible API. `STORAGE_ENDPOINT`,
+`STORAGE_REGION`, `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY_FILE` and
+`STORAGE_SECRET_KEY_FILE` configure that adapter. `STORAGE_ROOT` defaults to `/`;
+changing it changes the object namespace. Ambient AWS credentials and EC2 metadata
+lookup are disabled. `STORAGE_OPTIONS_FILE` accepts a protected JSON object of string-valued OpenDAL
+provider options (e.g. GCS bucket and credential_path, or Azure container/account
+settings). The supported scheme allowlist is s3, fs, memory, gcs and azblob.
+Local tests exercise memory and filesystem portability; GCS/Azure are not tested
+against live accounts. Provider-specific configuration, secret mounts and testing
+are required before switching; changing a name alone does not migrate data.
 
 Run `python3 deploy/garage/provision.py --directory deploy/secrets`, start Garage
 with Compose, then run `deploy/garage/init.py` with the actual container name and
-secrets directory. The generated files are ignored by Git. They are reused on
-subsequent deployments. Garage's RPC secret is owner-readable; S3 key files are
-readable inside the non-root backend, behind a host directory with mode 0700.
+secrets directory. Existing credentials are reused, never rotated by deployment.
 
-## Migration gates
+## Recovery and historical migration
 
-Before changing production, rehearse against disposable local MinIO and Garage:
-copy including multipart, empty and Unicode-key objects; verify key sets, every
-SHA256 and content/user metadata; test authenticated image serving, presigned
-reads, upload/delete, corruption detection, and rollback. Stop Garage and archive
-both volumes, restore into fresh volumes, and rerun full verification. Run the
-backend suite and deployment/security tests. `rehearse.py` exercises the data and
-application operations against the explicitly named disposable containers.
+The completed MinIO migration's reports remain in `PRODUCTION.md` and
+`VALIDATION.md`. Original production volumes and snapshots are retained offline.
+The retired `cutover.sh`, `rollback.yml`, `migrate.py`, and original rehearsal are
+available from commit `ed7540b1f091f009bdd6d12ac1c5a3ca15f93a46`, together with
+their matching Compose definitions and dependency requirements. Recover those
+files into an isolated checkout, not over a running deployment. Use the original
+secrets and mount retained source volumes read-only for inspection. Historical
+snapshots are stale: freeze writes and reconcile objects and DB changes before
+any rollback. Never simply point the live app back to the historical store.
 
-Production needs enough free space for original MinIO, its snapshot, Garage and
-backup scratch space. Inventory all buckets and reject versioned source buckets;
-Garage does not preserve S3 version history. Provision every destination bucket
-before copying. This deployment uses `listing-photos`.
+The OpenDAL Python metadata interface does not expose every S3 content header
+(e.g. Cache-Control). Therefore the historical byte-and-metadata-preserving copier
+is not replaced by a lossy OpenDAL copier. The SDK change leaves existing objects,
+keys, metadata and database references untouched.
 
-## Production cutover
+## Backups and validation
 
-1. Build/test locally, review changes, then synchronize reviewed source. Preserve
-   all production secrets and keep migration evidence outside the rsynced tree.
-   If the installed backup job still targets MinIO, pause only its cron entry
-   under the same exclusive backup lock before cutover, saving the original.
-   Restore the schedule with the Garage-aware installer after verification;
-   restore the original schedule instead if rolling back to MinIO. This covers
-   the gap between cutover and ordinary deployment.
-2. The backup root is root-owned. Create a protected writable evidence parent
-   once with `sudo install -d -o ubuntu -g ubuntu -m 700
-   /home/ubuntu/nestswipe-backups/garage-migrations`. Set
-   `NESTSWIPE_MIGRATION_EVIDENCE` to a **new child directory** there when running
-   `bash deploy/garage/cutover.sh` on the VM. It takes the exclusive backup
-   lock, prepares Garage/backend, stops ingress and backend, snapshots PostgreSQL
-   and MinIO, copies all objects, checks every byte and metadata field, records DB
-   reference coverage and starts the backend with `SCHEDULER_ENABLED=false`.
-   The original MinIO volume is never deleted. Caddy stays stopped for validation.
-3. Inspect `manifest.json` and `reference-check.json` in the migration evidence
-   directory. Existing missing references are reported distinctly; all existing
-   objects must be preserved. Validate several existing galleries through the
-   authenticated API, then a controlled object upload/read/delete without DB
-   changes. Verify backend health and scheduler remains paused.
-4. Only after those smoke tests pass, write the verified manifest path into
-   `deploy/secrets/garage-migration-verified`. This unlocks ordinary deployment.
-   Run the standard deployment to install backup and monitor scripts
-   and enable normal scheduling/ingress. Verify public health and image access.
-   Keep MinIO stopped (not deleted) and retain the pre-migration snapshot.
-5. On failure before reopening, perform a storage rollback using the tested new
-   backend image (which supports scheduler pause). Run Compose with `garage/rollback.yml` and
-   `--no-deps backend`, keeping writers paused, verify MinIO image access, then
-   explicitly enable scheduling and reopen ingress. After reopening, rollback
-   requires a new write freeze and reconciliation of new objects/deletions;
-   switching endpoints alone is unsafe.
+Backups stop Garage and archive both `deploy_garage_meta` and
+`deploy_garage_data`. Restore both with matching configuration and secrets.
+Older backups must first use their bundled storage configuration. Never run
+`docker compose down -v`, delete retained storage volumes, or copy one storage
+engine's internal data files into another engine.
 
-Do not use `docker compose down -v`. Do not copy MinIO's volume into Garage.
-Do not use deletion-based mirroring. Database snapshots and manifests may contain
-private data: retain them in protected backup locations, never Git or chat.
-
-## Backups and restore
-
-`production-backup.sh` now stops Garage and includes both `deploy_garage_meta`
-and `deploy_garage_data`. Restore them together while Garage is stopped, with the
-same version/configuration/secrets. Older MinIO backups use their bundled MinIO
-configuration first. Verify the restored objects through S3 and database photo
-references before reopening the restored application.
+`verify.py` records a read-only SHA256/key/size/content-type/user-metadata inventory
+using the configured storage backend. Reports contain private object keys and
+belong in a protected backup directory, never Git. Compare before/after inventory
+with writers paused when validating a deployment. Full S3 metadata preservation
+for this SDK-only change follows from not writing any existing object.

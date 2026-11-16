@@ -33,7 +33,7 @@ def test_unreadable_file_never_falls_back_to_environment(tmp_path, monkeypatch, 
 
 
 @pytest.mark.parametrize(
-    "field", ["jwt_secret", "database_url", "minio_root_user", "minio_root_password"]
+    "field", ["jwt_secret", "database_url", "storage_access_key", "storage_secret_key"]
 )
 def test_required_files_cannot_be_empty(tmp_path, monkeypatch, field):
     secret = tmp_path / field

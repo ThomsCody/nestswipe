@@ -85,8 +85,8 @@ def _apply_all_patches(stack: ExitStack) -> None:
         ),
         f"{_M}.download_photo": AsyncMock(return_value=FAKE_PNG_BYTES),
         f"{_M}.compute_phash": MagicMock(return_value="abcdef1234567890"),
-        f"{_M}.get_minio_client": MagicMock(return_value=MagicMock()),
-        f"{_M}.ensure_bucket": MagicMock(),
+        f"{_M}.get_storage": MagicMock(return_value=MagicMock()),
+        f"{_M}.ensure_storage": MagicMock(),
         f"{_M}.upload_photo": MagicMock(return_value="photos/uploaded.jpg"),
     }
     for target, mock_value in targets.items():

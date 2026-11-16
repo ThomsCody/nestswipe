@@ -80,32 +80,19 @@ services:
       retries: 12
     restart: unless-stopped
 
-  minio:
-    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-    profiles: ["rollback"]
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
-      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
-    volumes:
-      - minio_data:/data
-    secrets:
-      - minio_root_user
-      - minio_root_password
-    restart: unless-stopped
-
   backend:
     build:
       context: ../backend
       target: prod
     environment:
       DATABASE_URL_FILE: /run/secrets/database_url
-      MINIO_ENDPOINT: garage:3900
-      MINIO_REGION: garage
+      STORAGE_BACKEND: s3
+      STORAGE_ENDPOINT: garage:3900
+      STORAGE_REGION: garage
       SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
-      MINIO_ROOT_USER_FILE: /run/secrets/garage_access_key
-      MINIO_ROOT_PASSWORD_FILE: /run/secrets/garage_secret_key
-      MINIO_BUCKET: ${MINIO_BUCKET:-listing-photos}
+      STORAGE_ACCESS_KEY_FILE: /run/secrets/garage_access_key
+      STORAGE_SECRET_KEY_FILE: /run/secrets/garage_secret_key
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-listing-photos}
       JWT_SECRET_FILE: /run/secrets/jwt_secret
       EMAIL_POLL_INTERVAL_MINUTES: ${EMAIL_POLL_INTERVAL_MINUTES:-5}
       LISTING_PROBES_ENABLED: "false"
@@ -185,10 +172,6 @@ secrets:
     file: ${NESTSWIPE_SECRETS_DIR:-./secrets}/postgres_password
   database_url:
     file: ${NESTSWIPE_SECRETS_DIR:-./secrets}/database_url
-  minio_root_user:
-    file: ${NESTSWIPE_SECRETS_DIR:-./secrets}/minio_root_user
-  minio_root_password:
-    file: ${NESTSWIPE_SECRETS_DIR:-./secrets}/minio_root_password
   jwt_secret:
     file: ${NESTSWIPE_SECRETS_DIR:-./secrets}/jwt_secret
   decodo_api_key:
@@ -205,7 +188,6 @@ volumes:
   garage_meta:
   seloger_browser_profile:
   pgdata:
-  minio_data:
   caddy_data:
   caddy_config:
   frontend_dist:

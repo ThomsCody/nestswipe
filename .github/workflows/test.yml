@@ -77,9 +77,9 @@ jobs:
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
           TEST_POSTGRES_URL: "postgresql+psycopg://dbm_test:dbm_test@localhost:5432/nestswipe_dbm_test"
           JWT_SECRET: "test-secret-key"
-          MINIO_ENDPOINT: "localhost:9000"
-          MINIO_ROOT_USER: "test"
-          MINIO_ROOT_PASSWORD: "test"
+          STORAGE_ENDPOINT: "localhost:9000"
+          STORAGE_ACCESS_KEY: "test"
+          STORAGE_SECRET_KEY: "test"
           DD_TRACE_ENABLED: ${{ env.DD_API_KEY != '' && 'true' || 'false' }}
 
       - name: Save backend coverage report

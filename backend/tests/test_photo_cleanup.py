@@ -62,18 +62,18 @@ def _make_photos(listing_id, count=3):
     ]
 
 
-def _mock_minio():
+def _mock_s3():
     client = MagicMock()
-    client.stat_object.return_value = True  # placeholder exists
+    client.stat.return_value = True  # placeholder exists
     return client
 
 
 @pytest.fixture
-def mock_minio():
-    client = _mock_minio()
+def mock_s3():
+    client = _mock_s3()
     with (
-        patch("app.services.photo_cleanup.get_minio_client", return_value=client),
-        patch("app.services.photo_cleanup.ensure_bucket"),
+        patch("app.services.photo_cleanup.get_storage", return_value=client),
+        patch("app.services.photo_cleanup.ensure_storage"),
     ):
         yield client
 
@@ -95,9 +95,9 @@ def mock_session(db_session):
 
 
 async def test_stale_listing_photos_deleted_from_storage(
-    db_session, user, mock_minio, mock_session
+    db_session, user, mock_s3, mock_session
 ):
-    """Photos of stale non-favorited listings are removed from MinIO."""
+    """Photos of stale non-favorited listings are removed from storage."""
     listing = _make_listing(user, STALE_DATE)
     db_session.add(listing)
     await db_session.flush()
@@ -108,17 +108,13 @@ async def test_stale_listing_photos_deleted_from_storage(
     cleaned = await cleanup_stale_photos()
 
     assert cleaned == 1
-    removed_keys = [
-        call.args[1] for call in mock_minio.remove_object.call_args_list
-    ]
+    removed_keys = [call.args[0] for call in mock_s3.delete.call_args_list]
     assert sorted(removed_keys) == sorted(
         f"photos/{listing.id}_{i}.jpg" for i in range(3)
     )
 
 
-async def test_stale_listing_gets_placeholder(
-    db_session, user, mock_minio, mock_session
-):
+async def test_stale_listing_gets_placeholder(db_session, user, mock_s3, mock_session):
     """After cleanup a stale listing has exactly one placeholder photo row."""
     listing = _make_listing(user, STALE_DATE)
     db_session.add(listing)
@@ -129,18 +125,20 @@ async def test_stale_listing_gets_placeholder(
     await cleanup_stale_photos()
 
     rows = (
-        await db_session.execute(
-            select(ListingPhoto).where(ListingPhoto.listing_id == listing.id)
+        (
+            await db_session.execute(
+                select(ListingPhoto).where(ListingPhoto.listing_id == listing.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
     assert rows[0].s3_key == PLACEHOLDER_S3_KEY
     assert rows[0].position == 0
 
 
-async def test_fresh_listing_untouched(
-    db_session, user, mock_minio, mock_session
-):
+async def test_fresh_listing_untouched(db_session, user, mock_s3, mock_session):
     """Listings seen recently keep their photos."""
     listing = _make_listing(user, FRESH_DATE, title="Fresh")
     db_session.add(listing)
@@ -151,39 +149,35 @@ async def test_fresh_listing_untouched(
     cleaned = await cleanup_stale_photos()
 
     assert cleaned == 0
-    mock_minio.remove_object.assert_not_called()
+    mock_s3.delete.assert_not_called()
     count = len(
         (
             await db_session.execute(
-                select(ListingPhoto).where(
-                    ListingPhoto.listing_id == listing.id
-                )
+                select(ListingPhoto).where(ListingPhoto.listing_id == listing.id)
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     assert count == 2
 
 
-async def test_favorited_listing_untouched(
-    db_session, user, mock_minio, mock_session
-):
+async def test_favorited_listing_untouched(db_session, user, mock_s3, mock_session):
     """Stale listings that are favorites are not cleaned."""
     listing = _make_listing(user, STALE_DATE, title="Fav")
     db_session.add(listing)
     await db_session.flush()
     db_session.add_all(_make_photos(listing.id))
-    db_session.add(
-        Favorite(household_id=user.household_id, listing_id=listing.id)
-    )
+    db_session.add(Favorite(household_id=user.household_id, listing_id=listing.id))
     await db_session.commit()
 
     cleaned = await cleanup_stale_photos()
 
     assert cleaned == 0
-    mock_minio.remove_object.assert_not_called()
+    mock_s3.delete.assert_not_called()
 
 
-async def test_idempotent(db_session, user, mock_minio, mock_session):
+async def test_idempotent(db_session, user, mock_s3, mock_session):
     """Running cleanup twice does not re-process already-cleaned listings."""
     listing = _make_listing(user, STALE_DATE)
     db_session.add(listing)
@@ -192,17 +186,17 @@ async def test_idempotent(db_session, user, mock_minio, mock_session):
     await db_session.commit()
 
     assert await cleanup_stale_photos() == 1
-    mock_minio.remove_object.reset_mock()
+    mock_s3.delete.reset_mock()
 
     # Expire cached relationship state so the second run sees the placeholder
     db_session.expire_all()
 
     assert await cleanup_stale_photos() == 0
-    mock_minio.remove_object.assert_not_called()
+    mock_s3.delete.assert_not_called()
 
 
 async def test_listing_with_no_photos_gets_placeholder(
-    db_session, user, mock_minio, mock_session
+    db_session, user, mock_s3, mock_session
 ):
     """Stale listings that somehow lost all photos still get a placeholder."""
     listing = _make_listing(user, STALE_DATE, title="No photos")
@@ -213,19 +207,21 @@ async def test_listing_with_no_photos_gets_placeholder(
 
     assert cleaned == 1
     rows = (
-        await db_session.execute(
-            select(ListingPhoto).where(ListingPhoto.listing_id == listing.id)
+        (
+            await db_session.execute(
+                select(ListingPhoto).where(ListingPhoto.listing_id == listing.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
     assert rows[0].s3_key == PLACEHOLDER_S3_KEY
 
 
-async def test_minio_failure_does_not_block(
-    db_session, user, mock_minio, mock_session
-):
-    """If MinIO delete fails, DB cleanup still proceeds."""
-    mock_minio.remove_object.side_effect = Exception("connection refused")
+async def test_s3_failure_does_not_block(db_session, user, mock_s3, mock_session):
+    """If Storage delete fails, DB cleanup still proceeds."""
+    mock_s3.delete.side_effect = Exception("connection refused")
 
     listing = _make_listing(user, STALE_DATE)
     db_session.add(listing)
@@ -237,17 +233,19 @@ async def test_minio_failure_does_not_block(
 
     assert cleaned == 1
     rows = (
-        await db_session.execute(
-            select(ListingPhoto).where(ListingPhoto.listing_id == listing.id)
+        (
+            await db_session.execute(
+                select(ListingPhoto).where(ListingPhoto.listing_id == listing.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
     assert rows[0].s3_key == PLACEHOLDER_S3_KEY
 
 
-async def test_mixed_stale_and_fresh(
-    db_session, user, mock_minio, mock_session
-):
+async def test_mixed_stale_and_fresh(db_session, user, mock_s3, mock_session):
     """Only stale non-favorited listings are cleaned in a mixed batch."""
     stale = _make_listing(user, STALE_DATE, title="Stale")
     fresh = _make_listing(user, FRESH_DATE, title="Fresh")
@@ -257,25 +255,23 @@ async def test_mixed_stale_and_fresh(
     db_session.add_all(_make_photos(stale.id, count=5))
     db_session.add_all(_make_photos(fresh.id, count=3))
     db_session.add_all(_make_photos(stale_fav.id, count=4))
-    db_session.add(
-        Favorite(household_id=user.household_id, listing_id=stale_fav.id)
-    )
+    db_session.add(Favorite(household_id=user.household_id, listing_id=stale_fav.id))
     await db_session.commit()
 
     cleaned = await cleanup_stale_photos()
 
     assert cleaned == 1  # only stale (non-fav)
-    assert mock_minio.remove_object.call_count == 5  # stale had 5 photos
+    assert mock_s3.delete.call_count == 5  # stale had 5 photos
 
     # Fresh untouched
     fresh_count = len(
         (
             await db_session.execute(
-                select(ListingPhoto).where(
-                    ListingPhoto.listing_id == fresh.id
-                )
+                select(ListingPhoto).where(ListingPhoto.listing_id == fresh.id)
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     assert fresh_count == 3
 
@@ -283,10 +279,10 @@ async def test_mixed_stale_and_fresh(
     fav_count = len(
         (
             await db_session.execute(
-                select(ListingPhoto).where(
-                    ListingPhoto.listing_id == stale_fav.id
-                )
+                select(ListingPhoto).where(ListingPhoto.listing_id == stale_fav.id)
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     assert fav_count == 4

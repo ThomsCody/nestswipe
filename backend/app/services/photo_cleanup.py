@@ -1,7 +1,7 @@
 """Daily job: remove photos from stale listings to reclaim storage.
 
 Listings not updated in STALE_THRESHOLD (3 weeks) that are NOT in any
-household's favorites have their MinIO objects deleted and replaced by a
+household's favorites have their storage objects deleted and replaced by a
 single lightweight placeholder image.
 """
 
@@ -9,16 +9,16 @@ import io
 import logging
 from datetime import datetime, timedelta, timezone
 
+from opendal.exceptions import NotFound
 from PIL import Image, ImageDraw, ImageFont
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.config import settings
 from app.database import async_session
 from app.models.interaction import Favorite
 from app.models.listing import Listing, ListingPhoto
-from app.services.photo_storage import ensure_bucket, get_minio_client
+from app.services.photo_storage import ensure_storage, get_storage
 
 logger = logging.getLogger(__name__)
 
@@ -51,17 +51,15 @@ def _generate_placeholder() -> bytes:
     return buf.getvalue()
 
 
-def _ensure_placeholder(minio_client) -> str:
+def _ensure_placeholder(storage) -> str:
     """Upload the placeholder once if it doesn't already exist."""
     try:
-        minio_client.stat_object(settings.minio_bucket, PLACEHOLDER_S3_KEY)
-    except Exception:
+        storage.stat(PLACEHOLDER_S3_KEY)
+    except NotFound:
         placeholder_bytes = _generate_placeholder()
-        minio_client.put_object(
-            settings.minio_bucket,
+        storage.write(
             PLACEHOLDER_S3_KEY,
-            io.BytesIO(placeholder_bytes),
-            length=len(placeholder_bytes),
+            placeholder_bytes,
             content_type="image/jpeg",
         )
         logger.info("Uploaded placeholder image to %s", PLACEHOLDER_S3_KEY)
@@ -71,9 +69,9 @@ def _ensure_placeholder(minio_client) -> str:
 async def cleanup_stale_photos() -> int:
     """Delete photos for stale, non-favorited listings. Returns count of cleaned listings."""
     cutoff = datetime.now(timezone.utc) - STALE_THRESHOLD
-    minio_client = get_minio_client()
-    ensure_bucket(minio_client)
-    placeholder_key = _ensure_placeholder(minio_client)
+    storage = get_storage()
+    ensure_storage(storage)
+    placeholder_key = _ensure_placeholder(storage)
 
     cleaned = 0
     async with async_session() as db:
@@ -92,10 +90,7 @@ async def cleanup_stale_photos() -> int:
 
         for listing in stale_listings:
             # Already cleaned?
-            if (
-                len(listing.photos) == 1
-                and listing.photos[0].s3_key == placeholder_key
-            ):
+            if len(listing.photos) == 1 and listing.photos[0].s3_key == placeholder_key:
                 continue
 
             # Collect keys before mutating the relationship
@@ -107,21 +102,23 @@ async def cleanup_stale_photos() -> int:
                 await db.delete(photo)
             await db.flush()
 
-            # Delete original photos from MinIO
+            # Delete original photos from storage
             for key in s3_keys:
                 try:
-                    minio_client.remove_object(settings.minio_bucket, key)
+                    storage.delete(key)
                 except Exception:
-                    logger.warning("Failed to delete %s from MinIO", key)
+                    logger.warning("Failed to delete %s from storage", key)
 
             # Insert single placeholder row
-            db.add(ListingPhoto(
-                listing_id=listing.id,
-                s3_key=placeholder_key,
-                original_url=None,
-                phash=None,
-                position=0,
-            ))
+            db.add(
+                ListingPhoto(
+                    listing_id=listing.id,
+                    s3_key=placeholder_key,
+                    original_url=None,
+                    phash=None,
+                    position=0,
+                )
+            )
             cleaned += 1
 
             # Commit per listing so progress isn't lost on failure

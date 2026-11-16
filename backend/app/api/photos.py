@@ -3,7 +3,7 @@ from fastapi.responses import Response
 import jwt
 
 from app.config import settings
-from app.services.photo_storage import get_minio_client
+from app.services.photo_storage import get_storage
 
 router = APIRouter()
 
@@ -27,13 +27,10 @@ async def get_photo(s3_key: str, token: str = Query()):
             status_code=status.HTTP_403_FORBIDDEN, detail="Invalid token"
         )
 
-    client = get_minio_client()
-    response = client.get_object(settings.minio_bucket, s3_key)
-    data = response.read()
-    response.close()
-    response.release_conn()
-
-    content_type = response.headers.get("Content-Type", "image/jpeg")
+    storage = get_storage().to_async_operator()
+    metadata = await storage.stat(s3_key)
+    data = await storage.read(s3_key)
+    content_type = metadata.content_type or "image/jpeg"
     return Response(
         content=data,
         media_type=content_type,

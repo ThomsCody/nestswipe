@@ -6,9 +6,9 @@ os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 os.environ["JWT_SECRET"] = (
     "test-only-jwt-signing-key-not-a-production-secret-64-bytes-long-000"
 )
-os.environ.setdefault("MINIO_ENDPOINT", "localhost:9000")
-os.environ.setdefault("MINIO_ROOT_USER", "test")
-os.environ.setdefault("MINIO_ROOT_PASSWORD", "test")
+os.environ.setdefault("STORAGE_ENDPOINT", "localhost:9000")
+os.environ.setdefault("STORAGE_ACCESS_KEY", "test")
+os.environ.setdefault("STORAGE_SECRET_KEY", "test")
 os.environ.setdefault("DD_TRACE_ENABLED", "false")
 
 import pytest_asyncio

@@ -25,8 +25,8 @@ from app.services.photo_scraper import extract_photos_from_html
 from app.services.photo_storage import (
     compute_phash,
     download_photo,
-    ensure_bucket,
-    get_minio_client,
+    ensure_storage,
+    get_storage,
     upload_photo,
 )
 
@@ -122,7 +122,7 @@ async def _process_message(
     db: AsyncSession,
     msg_meta: dict,
     msg: dict,
-    minio_client,
+    storage,
     force: bool = False,
     remaining_emails: int = 1,
 ) -> int:
@@ -174,14 +174,14 @@ async def _process_message(
         return 0
 
     with track_email_processing(user.household_id, remaining_emails):
-        return await _parse_message(user, db, msg_meta, minio_client, source, html_body)
+        return await _parse_message(user, db, msg_meta, storage, source, html_body)
 
 
 async def _parse_message(
     user: User,
     db: AsyncSession,
     msg_meta: dict,
-    minio_client,
+    storage,
     source: str,
     html_body: str,
 ) -> int:
@@ -526,7 +526,7 @@ async def _parse_message(
 
             # Upload photos
             for i, (img_bytes, phash, original_url) in enumerate(photo_data):
-                s3_key = upload_photo(minio_client, img_bytes)
+                s3_key = upload_photo(storage, img_bytes)
                 db.add(
                     ListingPhoto(
                         listing_id=listing.id,
@@ -582,8 +582,8 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
     # First run: cap at 100 emails to avoid processing the entire inbox.
     # Subsequent runs only fetch new emails (query already has after: filter).
     max_results = 100 if first_run else 50
-    minio_client = get_minio_client()
-    ensure_bucket(minio_client)
+    storage = get_storage()
+    ensure_storage(storage)
 
     processed = 0
     try:
@@ -622,7 +622,7 @@ async def process_emails_for_user(user: User, db: AsyncSession) -> int:
                 db,
                 msg_meta,
                 msg,
-                minio_client,
+                storage,
                 remaining_emails=len(message_ids) - index,
             )
 
@@ -652,8 +652,8 @@ async def reprocess_emails(user: User, db: AsyncSession, email_ids: list[str]) -
         logger.exception("Failed to get Gmail service for user %s", user.id)
         return 0
 
-    minio_client = get_minio_client()
-    ensure_bucket(minio_client)
+    storage = get_storage()
+    ensure_storage(storage)
 
     processed = 0
     unique_email_ids = list(dict.fromkeys(email_ids))
@@ -668,7 +668,7 @@ async def reprocess_emails(user: User, db: AsyncSession, email_ids: list[str]) -
             db,
             {"id": email_id},
             msg,
-            minio_client,
+            storage,
             force=True,
             remaining_emails=len(unique_email_ids) - index,
         )

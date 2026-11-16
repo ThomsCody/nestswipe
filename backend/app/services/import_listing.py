@@ -18,12 +18,11 @@ from app.services.llm_extractor import extract_listing_from_page
 from app.services.listing_urls import reusable_listing_url
 from app.services.photo_classifier import classify_photos
 from app.services.photo_cleanup import PLACEHOLDER_S3_KEY
-from app.config import settings
 from app.services.photo_storage import (
     compute_phash,
     download_photo,
-    ensure_bucket,
-    get_minio_client,
+    ensure_storage,
+    get_storage,
     upload_photo,
 )
 
@@ -222,10 +221,10 @@ async def import_listing_from_url(
                 )
             ).all()
         )
-        minio_client = get_minio_client()
-        ensure_bucket(minio_client)
+        storage = get_storage()
+        ensure_storage(storage)
         for i, (img_bytes, phash, original_url) in enumerate(photo_data):
-            s3_key = upload_photo(minio_client, img_bytes)
+            s3_key = upload_photo(storage, img_bytes)
             db.add(
                 ListingPhoto(
                     listing_id=listing.id,
@@ -280,7 +279,7 @@ async def import_listing_from_url(
                 select(ListingPhoto.id).where(ListingPhoto.s3_key == key).limit(1)
             )
             if referenced is None:
-                minio_client.remove_object(settings.minio_bucket, key)
+                storage.delete(key)
         except Exception:
             logger.exception("Failed to remove replaced photo %s", key)
 
