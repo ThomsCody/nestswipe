@@ -348,3 +348,17 @@ Confirm the expected suites, counts, and outcomes for each service before treati
 onboarding as verified. A passing run with Datadog setup skipped does not verify
 ingestion. Test selection and other optional optimization features are not enabled
 by this configuration.
+
+### Datadog Code Coverage
+
+CI generates backend coverage with pytest-cov (`backend/coverage.xml`) and
+frontend coverage with Vitest's V8 provider
+(`frontend/coverage/cobertura-coverage.xml`). The frontend coverage provider is
+installed only in CI, matching the installed Vitest version exactly.
+
+After both test jobs pass, a dedicated job uploads both reports to Datadog using
+the `DD_API_KEY` GitHub Actions repository secret and the `datadoghq.com` site.
+The repository must be connected to Datadog's GitHub integration. Uploads are
+skipped for pull requests from forks, where repository secrets are unavailable.
+Coverage is available in Datadog under **Software Delivery > Code Coverage**
+after the workflow runs successfully.

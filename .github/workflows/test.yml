@@ -71,7 +71,7 @@ jobs:
           site: datadoghq.com
 
       - name: Run tests
-        run: pytest --tb=short -q
+        run: pytest --tb=short -q --cov=app --cov-report=term --cov-report=xml:coverage.xml
         working-directory: backend
         env:
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
@@ -81,6 +81,13 @@ jobs:
           MINIO_ROOT_USER: "test"
           MINIO_ROOT_PASSWORD: "test"
           DD_TRACE_ENABLED: ${{ env.DD_API_KEY != '' && 'true' || 'false' }}
+
+      - name: Save backend coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage.xml
+          if-no-files-found: error
 
   browser-tests:
     runs-on: ubuntu-latest
@@ -123,6 +130,10 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: cd frontend && npm ci
+      - name: Install matching Vitest coverage provider
+        # Keep the CI-only provider on exactly the installed Vitest version.
+        run: npm install --no-save "@vitest/coverage-v8@$(node -p 'require("./node_modules/vitest/package.json").version')"
+        working-directory: frontend
       - name: Configure Datadog Test Optimization
         if: ${{ env.DD_API_KEY != '' }}
         uses: datadog/test-visibility-github-action@v3
@@ -130,9 +141,39 @@ jobs:
           languages: js
           api_key: ${{ secrets.DD_API_KEY }}
           site: datadoghq.com
-      - run: cd frontend && npx vitest run
+      - name: Run tests with coverage
+        run: npx vitest run --coverage
+        working-directory: frontend
         env:
           NODE_OPTIONS: ${{ env.DD_TRACE_PACKAGE != '' && format('-r {0} --import {1}', env.DD_TRACE_PACKAGE, env.DD_TRACE_ESM_IMPORT) || '' }}
+      - name: Save frontend coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/cobertura-coverage.xml
+          if-no-files-found: error
       - run: cd frontend && npm run build
       - run: cd frontend && npm audit --audit-level=high
       - run: cd frontend && npm audit --omit=dev --audit-level=moderate
+
+  coverage-upload:
+    needs: [backend-tests, frontend-tests]
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage
+      - name: Upload coverage reports to Datadog
+        uses: DataDog/coverage-upload-github-action@v1
+        with:
+          api_key: ${{ secrets.DD_API_KEY }}
+          site: datadoghq.com
