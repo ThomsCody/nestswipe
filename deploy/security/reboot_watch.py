@@ -111,7 +111,7 @@ def in_window(policy, now=None):
 
 
 def healthy(policy):
-    for name in ("backend", "postgres", "minio", "caddy"):
+    for name in ("backend", "postgres", "garage", "caddy"):
         if (
             command(
                 "docker",

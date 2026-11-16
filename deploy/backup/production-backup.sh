@@ -20,18 +20,17 @@ restart_services() {
     for ((i=${#stopped[@]}-1; i>=0; i--)); do
         container=${stopped[$i]}
         docker start "$container" >/dev/null || return 1
-        if [[ "$container" == deploy-minio-1 ]]; then
+        if [[ "$container" == deploy-garage-1 ]]; then
             local ready=false
             for ((attempt=0; attempt<30; attempt++)); do
-                if docker exec deploy-postgres-1 wget -q --spider \
-                    http://minio:9000/minio/health/live 2>/dev/null; then
+                if docker exec deploy-garage-1 /garage status >/dev/null 2>&1; then
                     ready=true
                     break
                 fi
                 sleep 1
             done
             if [[ "$ready" != true ]]; then
-                log 'ERROR: MinIO readiness failed; continuing to restart application.'
+                log 'ERROR: Garage readiness failed; continuing to restart application.'
             fi
         fi
     done
@@ -85,14 +84,14 @@ fi
 attempted=true
 [[ -s "$CERT" && -s "$PROJECT/deploy/.env" && -s "$PROJECT/deploy/oauth.json" ]]
 openssl x509 -in "$CERT" -checkend 604800 -noout >/dev/null
-for container in deploy-backend-1 deploy-seloger-browser-1 deploy-minio-1 deploy-postgres-1; do
+for container in deploy-backend-1 deploy-seloger-browser-1 deploy-garage-1 deploy-postgres-1; do
     [[ $(docker inspect --format '{{.State.Running}}' "$container") == true ]] || {
         log "ERROR: $container is not running; refusing an incomplete backup"
         exit 1
     }
 done
 
-volumes=(deploy_minio_data deploy_seloger_browser_profile deploy_frontend_dist)
+volumes=(deploy_garage_meta deploy_garage_data deploy_seloger_browser_profile deploy_frontend_dist)
 paths=()
 estimated_kb=524288
 for volume in "${volumes[@]}"; do
@@ -113,7 +112,7 @@ log "Starting $name"
 
 # Quiesce writers before the logical DB snapshot and physical object-store copy.
 # Mark each container before stopping it, so even a partial stop is recovered.
-for container in deploy-backend-1 deploy-seloger-browser-1 deploy-minio-1; do
+for container in deploy-backend-1 deploy-seloger-browser-1 deploy-garage-1; do
     stopped+=("$container")
     docker stop --time 30 "$container" >/dev/null
 done

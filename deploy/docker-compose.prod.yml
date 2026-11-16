@@ -64,8 +64,25 @@ services:
       com.datadoghq.ad.logs: '[{"source": "postgresql", "service": "nestswipe-db"}]'
     restart: unless-stopped
 
+  garage:
+    image: dxflrs/garage:v2.5.0@sha256:677e5b758e4425a325b811c425c026bf35a4bf42f7ddbaa773de3f4fd779a5a5
+    command: /garage server --single-node
+    volumes:
+      - ./garage/garage.toml:/etc/garage.toml:ro
+      - garage_data:/var/lib/garage/data
+      - garage_meta:/var/lib/garage/meta
+    secrets:
+      - garage_rpc_secret
+    healthcheck:
+      test: ["CMD", "/garage", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
   minio:
     image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    profiles: ["rollback"]
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
@@ -83,9 +100,11 @@ services:
       target: prod
     environment:
       DATABASE_URL_FILE: /run/secrets/database_url
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
-      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
+      MINIO_ENDPOINT: garage:3900
+      MINIO_REGION: garage
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+      MINIO_ROOT_USER_FILE: /run/secrets/garage_access_key
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/garage_secret_key
       MINIO_BUCKET: ${MINIO_BUCKET:-listing-photos}
       JWT_SECRET_FILE: /run/secrets/jwt_secret
       EMAIL_POLL_INTERVAL_MINUTES: ${EMAIL_POLL_INTERVAL_MINUTES:-5}
@@ -121,8 +140,8 @@ services:
       - /var/run/datadog:/var/run/datadog:ro
     secrets:
       - database_url
-      - minio_root_user
-      - minio_root_password
+      - garage_access_key
+      - garage_secret_key
       - jwt_secret
       - decodo_api_key
       - proxy_user
@@ -131,8 +150,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      minio:
-        condition: service_started
+      garage:
+        condition: service_healthy
     labels:
       com.datadoghq.ad.logs: '[{"source": "python", "service": "nestswipe-backend"}]'
     restart: unless-stopped
@@ -156,6 +175,12 @@ services:
     restart: unless-stopped
 
 secrets:
+  garage_rpc_secret:
+    file: ${NESTSWIPE_SECRETS_DIR:-./secrets}/garage_rpc_secret
+  garage_access_key:
+    file: ${NESTSWIPE_SECRETS_DIR:-./secrets}/garage_access_key
+  garage_secret_key:
+    file: ${NESTSWIPE_SECRETS_DIR:-./secrets}/garage_secret_key
   postgres_password:
     file: ${NESTSWIPE_SECRETS_DIR:-./secrets}/postgres_password
   database_url:
@@ -176,6 +201,8 @@ secrets:
     file: ${NESTSWIPE_SECRETS_DIR:-./secrets}/sendgrid_api_key
 
 volumes:
+  garage_data:
+  garage_meta:
   seloger_browser_profile:
   pgdata:
   minio_data:

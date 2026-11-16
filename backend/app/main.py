@@ -38,9 +38,11 @@ from app.config import settings
 async def lifespan(app: FastAPI):
     from app.scheduler import start_scheduler, stop_scheduler
 
-    await start_scheduler()
+    if settings.scheduler_enabled:
+        await start_scheduler()
     yield
-    stop_scheduler()
+    if settings.scheduler_enabled:
+        stop_scheduler()
 
 
 app = FastAPI(title="Nestswipe", lifespan=lifespan)

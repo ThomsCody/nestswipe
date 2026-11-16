@@ -21,6 +21,14 @@ bash datadog/check-host-agent.sh
 # This must happen before any Compose command starts replacement containers.
 python3 provision-secrets.py --env-file .env --output-dir secrets
 
+python3 garage/provision.py --directory secrets
+
+# An ordinary deploy must never switch an existing installation to an empty store.
+if docker inspect deploy-minio-1 >/dev/null 2>&1 && [[ ! -s secrets/garage-migration-verified ]]; then
+  echo "ERROR: complete garage/cutover.sh and validate images before ordinary deployment."
+  exit 1
+fi
+
 echo "==> Installing backup scripts and schedule ..."
 sudo -n bash backup/install-production.sh
 
@@ -32,6 +40,10 @@ sudo -n bash security/install-monitoring.sh
 
 echo "==> Building containers ..."
 docker compose -f docker-compose.prod.yml build
+
+echo "==> Preparing Garage ..."
+docker compose -f docker-compose.prod.yml up -d --wait garage
+python3 garage/init.py --directory secrets --bucket "${MINIO_BUCKET:-listing-photos}"
 
 echo "==> Running database migrations ..."
 docker compose -f docker-compose.prod.yml run --rm backend \

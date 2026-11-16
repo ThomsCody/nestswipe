@@ -17,8 +17,25 @@ services:
     labels:
       com.datadoghq.ad.logs: '[{"source": "postgresql", "service": "nestswipe-db"}]'
 
+  garage:
+    image: dxflrs/garage:v2.5.0@sha256:677e5b758e4425a325b811c425c026bf35a4bf42f7ddbaa773de3f4fd779a5a5
+    command: /garage server --single-node
+    volumes:
+      - ./deploy/garage/garage.toml:/etc/garage.toml:ro
+      - garage_data:/var/lib/garage/data
+      - garage_meta:/var/lib/garage/meta
+    secrets:
+      - garage_rpc_secret
+    healthcheck:
+      test: ["CMD", "/garage", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
   minio:
     image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    profiles: ["rollback"]
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in the Compose env file}
@@ -38,9 +55,11 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rosen}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the Compose env file}@postgres:5432/${POSTGRES_DB:-nestswipe}
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in the Compose env file}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in the Compose env file}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-garage:3900}
+      MINIO_REGION: ${MINIO_REGION:-garage}
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+      MINIO_ROOT_USER_FILE: /run/secrets/garage_access_key
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/garage_secret_key
       MINIO_BUCKET: ${MINIO_BUCKET:-listing-photos}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the Compose env file}
       EMAIL_POLL_INTERVAL_MINUTES: ${EMAIL_POLL_INTERVAL_MINUTES:-5}
@@ -62,11 +81,14 @@ services:
     volumes:
       - ./backend:/app
       - ./oauth.json:/app/oauth.json:ro
+    secrets:
+      - garage_access_key
+      - garage_secret_key
     depends_on:
       postgres:
         condition: service_healthy
-      minio:
-        condition: service_started
+      garage:
+        condition: service_healthy
     labels:
       com.datadoghq.ad.logs: '[{"source": "python", "service": "nestswipe-backend"}]'
 
@@ -93,16 +115,21 @@ services:
       - ./backend:/app
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rosen}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the Compose env file}@postgres:5432/${POSTGRES_DB:-nestswipe}
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in the Compose env file}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in the Compose env file}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-garage:3900}
+      MINIO_REGION: ${MINIO_REGION:-garage}
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+      MINIO_ROOT_USER_FILE: /run/secrets/garage_access_key
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/garage_secret_key
       MINIO_BUCKET: ${MINIO_BUCKET:-listing-photos}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the Compose env file}
+    secrets:
+      - garage_access_key
+      - garage_secret_key
     depends_on:
       postgres:
         condition: service_healthy
-      minio:
-        condition: service_started
+      garage:
+        condition: service_healthy
     profiles:
       - test
 
@@ -122,5 +149,15 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
 volumes:
+  garage_data:
+  garage_meta:
   pgdata:
   minio_data:
+
+secrets:
+  garage_rpc_secret:
+    file: ./deploy/secrets/garage_rpc_secret
+  garage_access_key:
+    file: ./deploy/secrets/garage_access_key
+  garage_secret_key:
+    file: ./deploy/secrets/garage_secret_key

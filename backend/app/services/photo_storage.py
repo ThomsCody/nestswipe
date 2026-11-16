@@ -20,6 +20,7 @@ def get_minio_client() -> Minio:
         access_key=settings.minio_root_user,
         secret_key=settings.minio_root_password,
         secure=settings.minio_secure,
+        region=settings.minio_region,
     )
 
 

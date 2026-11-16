@@ -26,7 +26,7 @@ The encrypted payload includes:
 
 - `database.dump`: PostgreSQL custom-format logical dump.
 - `globals.sql`: PostgreSQL roles/global configuration, including password hashes.
-- `deploy_minio_data.tar`: photo objects and MinIO metadata.
+- `deploy_garage_data.tar` and `deploy_garage_meta.tar`: Garage object blocks and metadata (both required). Older backups contain `deploy_minio_data.tar` and must be restored using their bundled MinIO configuration.
 - `deploy_seloger_browser_profile.tar`: scraper profile/cookies.
 - `deploy_frontend_dist.tar`: the deployed frontend build.
 - `project.tar.gz`: deployed application source and configuration, **including
@@ -173,8 +173,8 @@ scratch directory after use; do not commit or attach them to a ticket.
 4. Create the target database with the configured database owner. Restore using
    PostgreSQL 16 `pg_restore --exit-on-error --no-owner --no-privileges` into the
    **new, empty database**. Do not run a trial restore against production.
-5. With MinIO stopped, extract `deploy_minio_data.tar` into its empty Docker
-   volume. The archive preserves ownership. Initially use the recorded MinIO
+5. With Garage stopped, extract both `deploy_garage_data.tar` and `deploy_garage_meta.tar` into their respective empty Docker
+   volumes. The archives preserve ownership. Initially use the recorded Garage
    version; test storage migration separately. Restore browser/frontend volumes
    similarly. PostgreSQL's physical data directory is deliberately not copied.
 6. Bring up services; check database row counts, login, favorites, photo access,

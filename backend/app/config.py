@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     minio_root_password: str = "minioadmin"
     minio_bucket: str = "listing-photos"
     minio_secure: bool = False
+    minio_region: str | None = None
+    scheduler_enabled: bool = True
 
     # JWT
     jwt_secret: str = "change-me-to-a-random-secret"
