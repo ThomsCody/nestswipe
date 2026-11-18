@@ -21,7 +21,16 @@ ENV VITE_DD_ENV=$VITE_DD_ENV
 ENV VITE_DD_ALLOWED_TRACING_URL=$VITE_DD_ALLOWED_TRACING_URL
 RUN npm run build
 
+ARG GIT_REVISION
+LABEL org.opencontainers.image.source="https://github.com/ThomsCody/nestswipe" \
+      org.opencontainers.image.revision="${GIT_REVISION}" \
+      com.datadoghq.image.source_path="frontend/Dockerfile"
+
 FROM nginx:alpine
+ARG GIT_REVISION
+LABEL org.opencontainers.image.source="https://github.com/ThomsCody/nestswipe" \
+      org.opencontainers.image.revision="${GIT_REVISION}" \
+      com.datadoghq.image.source_path="frontend/Dockerfile"
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 RUN sed -i '/^user /d; s@/var/run/nginx.pid@/tmp/nginx.pid@; s@/run/nginx.pid@/tmp/nginx.pid@' /etc/nginx/nginx.conf && \

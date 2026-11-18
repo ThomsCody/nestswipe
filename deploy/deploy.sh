@@ -3,6 +3,7 @@ set -euo pipefail
 
 SERVER="${NESTSWIPE_SERVER:-ubuntu@145.241.161.221}"
 REMOTE_DIR="/home/ubuntu/nestswipe"
+GIT_REVISION="$(git rev-parse HEAD)"
 
 echo "==> Syncing project to ${SERVER}:${REMOTE_DIR} ..."
 rsync -avz --delete \
@@ -29,4 +30,6 @@ python3 deploy/security/provision-reboot-key.py --provision \
   --env-file "${NESTSWIPE_ENV_FILE:-deploy/.env}" --server "$SERVER"
 
 echo "==> Checking host monitoring and deploying application containers ..."
-ssh "${SERVER}" 'sg docker -c "bash /home/ubuntu/nestswipe/deploy/remote-deploy.sh"'
+# The local commit must be expanded here: the remote checkout has no .git directory.
+# shellcheck disable=SC2029
+ssh "${SERVER}" "sg docker -c 'GIT_REVISION=${GIT_REVISION} bash /home/ubuntu/nestswipe/deploy/remote-deploy.sh'"

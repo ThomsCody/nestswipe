@@ -1,7 +1,10 @@
 services:
   caddy:
     image: nestswipe-caddy:2.11.7-security
-    build: ./caddy
+    build:
+      context: ./caddy
+      args:
+        GIT_REVISION: ${GIT_REVISION:-}
     ports:
       - "80:80"
       - "443:443"
@@ -22,6 +25,7 @@ services:
       context: ../frontend
       target: build
       args:
+        GIT_REVISION: ${GIT_REVISION:-}
         VITE_DD_APPLICATION_ID: ${VITE_DD_APPLICATION_ID}
         VITE_DD_CLIENT_TOKEN: ${VITE_DD_CLIENT_TOKEN}
         VITE_DD_SITE: ${VITE_DD_SITE:-datadoghq.com}
@@ -84,6 +88,8 @@ services:
     build:
       context: ../backend
       target: prod
+      args:
+        GIT_REVISION: ${GIT_REVISION:-}
     environment:
       DATABASE_URL_FILE: /run/secrets/database_url
       STORAGE_BACKEND: s3
@@ -144,7 +150,10 @@ services:
     restart: unless-stopped
 
   seloger-browser:
-    build: ../browser
+    build:
+      context: ../browser
+      args:
+        GIT_REVISION: ${GIT_REVISION:-}
     environment:
       PROXY_USER_FILE: /run/secrets/proxy_user
       PROXY_PASSWORD_FILE: /run/secrets/proxy_password

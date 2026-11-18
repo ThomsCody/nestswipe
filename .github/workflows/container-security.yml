@@ -1,0 +1,81 @@
+name: Container security
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    # Match the architecture deployed on the production VM.
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: backend
+            context: backend
+            dockerfile: backend/Dockerfile
+            target: prod
+          - image: browser
+            context: browser
+            dockerfile: browser/Dockerfile
+            target: ""
+          - image: caddy
+            context: deploy/caddy
+            dockerfile: deploy/caddy/Dockerfile
+            target: ""
+          - image: frontend-build
+            context: frontend
+            dockerfile: frontend/Dockerfile
+            target: build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check Datadog credentials
+        env:
+          DD_API_KEY: ${{ secrets.DD_API_KEY }}
+          DD_APP_KEY: ${{ secrets.DD_APP_KEY }}
+        run: |
+          test -n "$DD_API_KEY" || { echo 'Missing DD_API_KEY repository secret'; exit 1; }
+          test -n "$DD_APP_KEY" || { echo 'Missing DD_APP_KEY repository secret (appsec_vm_read scope required)'; exit 1; }
+
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the production image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
+          load: true
+          tags: nestswipe-${{ matrix.image }}:${{ github.sha }}
+          build-args: GIT_REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=security-${{ matrix.image }}
+          cache-to: type=gha,scope=security-${{ matrix.image }},mode=max
+
+      - name: Install Datadog Security CLI
+        run: |
+          curl -fsSL https://keys.datadoghq.com/DATADOG_APT_KEY_CURRENT.public \
+            | sudo gpg --dearmor -o /usr/share/keyrings/datadog-archive-keyring.gpg
+          echo 'deb [signed-by=/usr/share/keyrings/datadog-archive-keyring.gpg] https://apt.datadoghq.com/ stable datadog-security-cli' \
+            | sudo tee /etc/apt/sources.list.d/datadog-security-cli.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends datadog-security-cli
+
+      - name: Scan and link vulnerabilities to the Dockerfile
+        env:
+          DD_API_KEY: ${{ secrets.DD_API_KEY }}
+          DD_APP_KEY: ${{ secrets.DD_APP_KEY }}
+          DD_SITE: datadoghq.com
+          IMAGE: nestswipe-${{ matrix.image }}:${{ github.sha }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+        run: datadog-security-cli image "$IMAGE" --dockerfile "$DOCKERFILE"
