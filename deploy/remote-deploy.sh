@@ -16,6 +16,7 @@ fi
 # Agent upgrades and configuration are managed independently through Fleet.
 # Check before touching application containers; never reinstall/reset the Agent.
 bash datadog/check-host-agent.sh
+bash security/install-security-cli.sh
 
 # Materialize the existing credentials without printing or rotating them.
 # This must happen before any Compose command starts replacement containers.

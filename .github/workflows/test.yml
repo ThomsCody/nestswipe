@@ -27,6 +27,7 @@ jobs:
           site: datadoghq.com
       - run: python -m unittest discover -s deploy/security -p 'test_*.py' -v
       - run: python -m unittest discover -s deploy -p 'test_provision_secrets.py' -v
+      - run: bash deploy/security/test-scan-deployed-images.sh
       - run: shellcheck deploy/security/*.sh deploy/backup/*.sh deploy/remote-deploy.sh
 
   backend-tests:
