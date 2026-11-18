@@ -154,7 +154,7 @@ jobs:
           if-no-files-found: error
       - run: cd frontend && npm run build
       - name: Test the dependency audit policy
-        run: node --test scripts/audit-dependencies.test.mjs
+        run: node --test scripts/test-audit-dependencies.mjs
         working-directory: frontend
       - name: Audit dependencies with the approved temporary exception
         run: node scripts/audit-dependencies.mjs

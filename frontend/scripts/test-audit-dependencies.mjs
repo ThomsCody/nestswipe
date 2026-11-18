@@ -1,3 +1,4 @@
+// Run with node --test; keep this filename outside Vitest's *.test.* discovery.
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { advisory, assessAudit, expiresAt } from './audit-dependencies.mjs';
