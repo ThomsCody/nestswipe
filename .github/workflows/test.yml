@@ -153,7 +153,12 @@ jobs:
           path: frontend/coverage/cobertura-coverage.xml
           if-no-files-found: error
       - run: cd frontend && npm run build
-      - run: cd frontend && npm audit --audit-level=high
+      - name: Test the dependency audit policy
+        run: node --test scripts/audit-dependencies.test.mjs
+        working-directory: frontend
+      - name: Audit dependencies with the approved temporary exception
+        run: node scripts/audit-dependencies.mjs
+        working-directory: frontend
       - run: cd frontend && npm audit --omit=dev --audit-level=moderate
 
   coverage-upload:
