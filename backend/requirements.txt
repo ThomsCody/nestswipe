@@ -6,6 +6,8 @@ uvicorn[standard]==0.34.0
 sqlalchemy[asyncio]==2.0.46
 psycopg[binary]==3.3.6
 alembic==1.14.1
+# GHSA-2h4p-vjrc-8xpq: constrain Alembic's template dependency to a patched release.
+Mako==1.4.3
 pydantic-settings==2.7.1
 PyJWT[crypto]==2.15.1
 httpx==0.28.1
