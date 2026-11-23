@@ -3,6 +3,7 @@
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import urlencode
 
 import pytest
 from app.models.listing import Listing
@@ -15,6 +16,11 @@ from sqlalchemy import select
 SOURCE_ID = "90281149-44de-4c1e-aad2-844f0ed5e33f"
 URL = f"https://www.jinka.fr/ad/{SOURCE_ID}"
 PHOTOS = [f"https://media.apimo.pro/cache/room-{i}-original.jpg" for i in range(18)]
+PROXY_PHOTOS = [
+    "https://api.jinka.fr/apiv2/media/imgsrv?"
+    + urlencode({"url": f"http://agency.example/Document/bien/v2/room-{i}"})
+    for i in range(14)
+]
 LISTING_DATA = {
     "@context": "https://schema.org",
     "@type": "RealEstateListing",
@@ -74,6 +80,35 @@ def test_gallery_filters_duplicates_invalid_entries_and_limits_size():
     assert actual == [PHOTOS[0], *photos][: scraper.MAX_PHOTOS_PER_LISTING]
 
 
+def test_extensionless_proxy_gallery_preserves_distinct_images_and_deduplicates():
+    data = {
+        **LISTING_DATA,
+        "image": [*PROXY_PHOTOS, PROXY_PHOTOS[0] + "&width=640"],
+    }
+    photos, labels = scraper._extract_photos_from_html(listing_html(data), "jinka")
+    assert photos == PROXY_PHOTOS
+    assert labels == {}
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://api.jinka.fr.evil.example/apiv2/media/imgsrv?url=http%3A%2F%2Fagency.example%2Fphoto",
+        "https://api.jinka.fr/other?url=http%3A%2F%2Fagency.example%2Fphoto",
+        "http://api.jinka.fr/apiv2/media/imgsrv?url=http%3A%2F%2Fagency.example%2Fphoto",
+        "https://api.jinka.fr/apiv2/media/imgsrv",
+        "https://api.jinka.fr/apiv2/media/imgsrv?url=",
+        "https://api.jinka.fr/apiv2/media/imgsrv?url=file%3A%2F%2F%2Fphoto",
+        "https://[invalid/apiv2/media/imgsrv?url=http%3A%2F%2Fagency.example%2Fphoto",
+        "https://api.jinka.fr/apiv2/media/imgsrv?url=https%3A%2F%2F%5Binvalid%2Fphoto",
+    ],
+)
+def test_extensionless_exception_only_accepts_jinka_image_endpoint(url):
+    data = {**LISTING_DATA, "image": [url]}
+    photos, _ = scraper._extract_photos_from_html(listing_html(data), "jinka")
+    assert photos == []
+
+
 @pytest.mark.parametrize("data", [None, {}, {**LISTING_DATA, "image": None}])
 def test_missing_gallery_falls_back_to_rendered_images(data):
     photos, _ = scraper._extract_photos_from_html(listing_html(data), "jinka")
@@ -102,8 +137,9 @@ def test_monitoring_identifies_real_jinka_imports(monkeypatch):
     )
 
 
+@pytest.mark.parametrize("photo_urls", [PHOTOS, PROXY_PHOTOS])
 async def test_import_url_scrapes_and_reimports_same_jinka_listing(
-    client, auth_headers, test_user, db_session
+    client, auth_headers, test_user, db_session, photo_urls
 ):
     test_user.openai_api_key = "test-key"
     await db_session.commit()
@@ -112,7 +148,10 @@ async def test_import_url_scrapes_and_reimports_same_jinka_listing(
     http.__aexit__ = AsyncMock(return_value=None)
     http.get = AsyncMock(
         return_value=SimpleNamespace(
-            status_code=200, text=listing_html(), url=URL, headers={}
+            status_code=200,
+            text=listing_html({**LISTING_DATA, "image": photo_urls}),
+            url=URL,
+            headers={},
         )
     )
     extracted = ExtractedListing(
@@ -160,5 +199,5 @@ async def test_import_url_scrapes_and_reimports_same_jinka_listing(
     assert stored[0].source_id == SOURCE_ID
     assert extract.await_args.args[2] == "jinka"
     assert "1 390 000" in extract.await_args.args[1]
-    assert [call.args[0] for call in download.await_args_list] == PHOTOS * 2
+    assert [call.args[0] for call in download.await_args_list] == photo_urls * 2
     assert session_factory.call_args.kwargs["proxy"] is None

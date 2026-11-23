@@ -240,11 +240,33 @@ def _extract_source_id(url: str, source: str) -> str | None:
     return None
 
 
+def _jinka_photo_target(url: str) -> str | None:
+    """Identify Jinka's image proxy without relying on a filename extension."""
+    try:
+        parsed = urlparse(url)
+        target = parse_qs(parsed.query).get("url", [""])[0]
+        target_url = urlparse(target)
+    except ValueError:
+        return None
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "api.jinka.fr"
+        or parsed.path != "/apiv2/media/imgsrv"
+    ):
+        return None
+    if target_url.scheme in {"http", "https"} and target_url.netloc:
+        return target
+    return None
+
+
 def _is_valid_photo(url: str, source: str) -> bool:
     """Check if a URL looks like a valid property photo."""
     lower = url.lower()
     if not lower.startswith("http"):
         return False
+    if source == "jinka" and _jinka_photo_target(url):
+        # The downloader validates the response MIME type, image and dimensions.
+        return True
     if not re.search(r"\.(jpe?g|png|webp)", lower):
         return False
     if any(p in lower for p in EXCLUDE_PATTERNS):
@@ -393,17 +415,19 @@ def _extract_photos_from_html(
     # Filter, deduplicate, normalize
     # Use the filename (last path segment) as dedup key so different sizes
     # of the same image (e.g. v.seloger.com/s/crop/48x48/.../HASH.jpg vs
-    # /s/crop/933x645/.../HASH.jpg) are treated as one image.
+    # /s/crop/933x645/.../HASH.jpg) are treated as one image. Jinka proxy URLs
+    # all have the same path: identify them by their underlying image URL.
     photo_labels: dict[str, str] = {}
     for url in candidate_urls:
         if not _is_valid_photo(url, source):
             continue
-        normalized = _normalize_photo_url(url)
+        jinka_target = _jinka_photo_target(url) if source == "jinka" else None
+        normalized = url if jinka_target else _normalize_photo_url(url)
         base = normalized.split("?")[0]
-        filename = base.rsplit("/", 1)[-1]
-        if filename in seen_base:
+        photo_id = jinka_target or base.rsplit("/", 1)[-1]
+        if photo_id in seen_base:
             continue
-        seen_base.add(filename)
+        seen_base.add(photo_id)
         photos.append(normalized)
         label = raw_labels.get(url)
         if label in SELOGER_PHOTO_ACCEPT_LABELS:
