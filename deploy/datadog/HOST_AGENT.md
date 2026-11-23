@@ -49,9 +49,20 @@ sudo python3 deploy/datadog/setup-host-agent.py --refresh-db-credentials
 
 ## Verification
 
+The last manually verified stable upgrade was to **7.86.0** (2026-11-23),
+matching the development Compose image. To apply this version through the
+existing Fleet package installer:
+
+```sh
+sudo datadog-installer install oci://install.datadoghq.com/agent-package:7.86.0-1
+```
+
+Allow the Agent to finish starting before checking health. Future Fleet upgrades
+remain enabled; application deployments do not pin the host package.
+
 ```sh
 sudo datadog-agent status
-sudo /opt/datadog-agent/embedded/bin/installer status
+sudo datadog-installer status
 bash deploy/datadog/check-host-agent.sh
 curl --fail --silent --show-error https://nestswipe.freeddns.org/api/v1/health
 ```

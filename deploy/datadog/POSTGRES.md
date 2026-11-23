@@ -7,8 +7,14 @@ over the private Docker network; no database port is published.
 `postgres.yaml` enables DBM, schema metadata, and table/index statistics.
 Query metrics, activity sampling, and sampled explain plans use the Agent's
 defaults. SQL literal obfuscation remains enabled. This setup does not enable
-raw SQL logging or `auto_explain`. The login has no grants to read application
-table rows; the restricted explain function runs with the owner's privileges.
+raw SQL logging or `auto_explain`. The restricted explain function runs with
+the owner's privileges. Production additionally grants `SELECT` on the 12
+application tables listed in `postgres-scanning.sql` for scanning. The
+`users` table includes OAuth refresh tokens and API keys; the owner explicitly
+approved scanning access to these columns on 2026-11-23. The `alembic_version`
+migration table is excluded, and new tables are not granted access
+automatically. The role retains `default_transaction_read_only = on`
+and has no application-table write privileges.
 
 The instance appears as `nestswipe-db-prod`, service `nestswipe-db`, env `prod`.
 
@@ -43,6 +49,22 @@ Normal deployments retain the PostgreSQL flags and leave the host Agent's
 Fleet-managed configuration intact. The generated password is only on the
 production VM and in its protected backups. A fresh database restore requires
 this provisioning step before DBM can connect.
+
+## Table scanning permissions
+
+Applied to production on 2026-11-23. To restore the same explicit grants, run
+from the production `deploy/` directory after provisioning the Datadog role:
+
+```sh
+sudo flock -n /home/ubuntu/nestswipe-backups/.backup.lock \
+  docker compose -f docker-compose.prod.yml exec -T postgres \
+  sh -c 'exec psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+  < datadog/postgres-scanning.sql
+```
+
+These grants provide database read access; scan selection and scheduling are
+managed separately in Datadog. Review the explicit table list before adding
+new tables. To remove these grants, use `REVOKE SELECT` on the same tables.
 
 ## Rollback
 
