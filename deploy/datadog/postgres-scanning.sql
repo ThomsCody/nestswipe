@@ -1,11 +1,12 @@
 -- Run as the database owner in the application database only.
--- Explicit grants cover existing application tables selected for scanning.
+-- Explicit grants cover every existing public table, including migration metadata.
 -- New tables require a separate grant; no write privileges are granted.
 -- users includes OAuth refresh tokens and API keys; access explicitly approved.
 BEGIN;
 SET LOCAL lock_timeout = '3s';
 GRANT USAGE ON SCHEMA public TO datadog;
 GRANT SELECT ON TABLE
+    public.alembic_version,
     public.comments,
     public.favorites,
     public.household_invites,

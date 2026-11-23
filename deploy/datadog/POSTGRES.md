@@ -8,12 +8,12 @@ over the private Docker network; no database port is published.
 Query metrics, activity sampling, and sampled explain plans use the Agent's
 defaults. SQL literal obfuscation remains enabled. This setup does not enable
 raw SQL logging or `auto_explain`. The restricted explain function runs with
-the owner's privileges. Production additionally grants `SELECT` on the 12
-application tables listed in `postgres-scanning.sql` for scanning. The
+the owner's privileges. Production additionally grants `SELECT` on all 13
+existing public tables listed in `postgres-scanning.sql` for scanning. The
 `users` table includes OAuth refresh tokens and API keys; the owner explicitly
 approved scanning access to these columns on 2026-11-23. The `alembic_version`
-migration table is excluded, and new tables are not granted access
-automatically. The role retains `default_transaction_read_only = on`
+migration table is included. New tables are not granted access automatically.
+The role retains `default_transaction_read_only = on`
 and has no application-table write privileges.
 
 The instance appears as `nestswipe-db-prod`, service `nestswipe-db`, env `prod`.
