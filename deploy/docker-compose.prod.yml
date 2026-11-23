@@ -36,7 +36,7 @@ services:
       - frontend_dist:/output
 
   postgres:
-    image: postgres:16.15-alpine@sha256:f4610795587492cd4fb887c2dc3de301b813278bb6f616992061141b5f15ac36
+    image: postgres:16.16-alpine@sha256:ddc1c45d23db7f0702f5a2727e28f24cbb75746f625c8c5083a190e50cf01740
     command:
       - postgres
       - -c
