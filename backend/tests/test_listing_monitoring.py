@@ -488,7 +488,7 @@ async def test_bellesdemeures_access_metrics_use_site_tag_without_changing_scrap
     fetch = AsyncMock(return_value=scraper.ScrapedListing(page_text=PAGE))
     monkeypatch.setattr(scraper, "_scrape_listing", fetch)
     await scraper.scrape_listing(url, "seloger", purpose="probe")
-    fetch.assert_awaited_once_with(url, "seloger")
+    fetch.assert_awaited_once_with(url, "seloger", allow_paid=False)
     assert all(
         c.kwargs["tags"] == ["listing_source:bellesdemeures", "purpose:probe"]
         for c in client.increment.call_args_list

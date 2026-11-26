@@ -83,6 +83,17 @@ def scrape_attempt(source: str, purpose: str):
     _emit("nestswipe.listing_access.attempts", 1, source=source, purpose=purpose)
 
 
+def web_data_event(event: str):
+    if event in {
+        "requests",
+        "success",
+        "failure",
+        "cache_hit",
+        "state_error",
+    }:
+        _emit("nestswipe.web_data." + event, 1, source="seloger")
+
+
 def scrape_outcome(source: str, purpose: str, outcome: str):
     # Explicit zeros keep sparse failure series evaluable during healthy traffic.
     for status in ("success", "failure", "unavailable"):

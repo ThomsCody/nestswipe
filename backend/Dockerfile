@@ -26,6 +26,8 @@ FROM deps AS prod
 
 COPY . .
 
+RUN mkdir -p /var/lib/nestswipe/web-data && chown -R 1001:1001 /var/lib/nestswipe
+
 USER 1001:1001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3).close()"]

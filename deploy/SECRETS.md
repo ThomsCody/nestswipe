@@ -20,6 +20,11 @@ integrations get empty files when unset. Existing files must match `.env`;
 differences stop deployment for explicit reconciliation. Unchanged files keep
 their inode so existing container bind mounts remain valid.
 
+The optional `decodo_web_data_api_key` is configured directly as a secret file.
+Provisioning preserves an existing file, or creates an empty one to keep paid
+recovery disabled. It is separate from the account reporting key in `.env`.
+See [WEB_DATA.md](WEB_DATA.md) for caching, usage reporting and deployment instructions.
+
 The host directory is mode `0700`, owned by the deployment user. Files are mode
 `0600`, except the two proxy files, which are `0444` so the browser's uid 1001
 can read them through its individual read-only mounts. The parent directory

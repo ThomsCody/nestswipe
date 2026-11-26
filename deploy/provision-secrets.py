@@ -23,6 +23,7 @@ EXPRESSIONS = {
     "sendgrid_api_key": "${SENDGRID_API_KEY:-}",
 }
 BROWSER_SECRETS = {"proxy_user", "proxy_password"}
+FILE_ONLY_SECRETS = {"decodo_web_data_api_key"}
 
 
 def read_values(env_file: Path) -> dict[str, str]:
@@ -71,6 +72,14 @@ def provision(values: dict[str, str], directory: Path) -> None:
         raise RuntimeError("Refusing a symlinked secrets directory")
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     directory.chmod(0o700)
+    # These optional integrations are configured directly as secret files, not
+    # copied into .env. Preserve their contents; an empty file disables them.
+    values = dict(values)
+    for name in FILE_ONLY_SECRETS:
+        path = directory / name
+        if path.is_symlink():
+            raise RuntimeError(f"Refusing a symlinked secret: {name}")
+        values[name] = path.read_bytes().decode("utf-8") if path.exists() else ""
     # Check every existing file before changing anything. An old .env must not
     # silently rotate live credentials after this one-time migration.
     for name, value in values.items():
@@ -116,7 +125,7 @@ def main():
             "check configuration and file permissions"
         ) from None
     print(
-        f"Verified {len(EXPRESSIONS)} secret files; values were not printed or changed."
+        f"Verified {len(EXPRESSIONS) + len(FILE_ONLY_SECRETS)} secret files; values were not printed or changed."
     )
 
 

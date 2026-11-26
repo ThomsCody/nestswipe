@@ -2,7 +2,7 @@ import json
 import os
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 
 
@@ -14,6 +14,7 @@ SECRET_FIELDS = {
     "proxy_user",
     "proxy_password",
     "decodo_api_key",
+    "decodo_web_data_api_key",
     "sendgrid_api_key",
     "google_client_secret",
 }
@@ -81,7 +82,12 @@ class Settings(BaseSettings):
     # Reporting API only; never used as proxy credentials.
     decodo_api_key: SecretStr = SecretStr("")
 
-    # Internal persistent Chromium service; no public port or paid scraping API.
+    # Paid recovery for blocked SeLoger pages; separate from the reporting key.
+    decodo_web_data_api_key: SecretStr = SecretStr("")
+    decodo_web_data_cache_ttl_seconds: int = Field(default=86400, ge=60)
+    decodo_web_data_state_path: str = "/var/lib/nestswipe/web-data/state.sqlite3"
+
+    # Internal persistent Chromium service; no public port.
     # Legacy env name; shared renderer handles SeLoger, PAP and Leboncoin.
     seloger_browser_url: str = ""
 

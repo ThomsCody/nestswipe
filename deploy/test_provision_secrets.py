@@ -69,6 +69,28 @@ class ProvisionTests(unittest.TestCase):
             self.assertFalse((directory / "database_url").exists())
             self.assertEqual((directory / "jwt_secret").read_text(), "current")
 
+    def test_file_only_web_data_key_is_preserved_and_default_is_disabled(self):
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root)
+            secret = directory / "decodo_web_data_api_key"
+            provision_secrets.provision({"jwt_secret": "example"}, directory)
+            self.assertEqual(secret.read_bytes(), b"")
+            value = b"web-data-key-with-$-characters\r\n"
+            secret.write_bytes(value)
+            inode = secret.stat().st_ino
+            provision_secrets.provision({"jwt_secret": "example"}, directory)
+            self.assertEqual(secret.read_bytes(), value)
+            self.assertEqual(secret.stat().st_ino, inode)
+            self.assertEqual(stat.S_IMODE(secret.stat().st_mode), 0o600)
+
+    def test_file_only_key_cannot_be_a_symlink(self):
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root)
+            (directory / "decodo_web_data_api_key").symlink_to(directory / "outside")
+            with self.assertRaisesRegex(RuntimeError, "symlinked"):
+                provision_secrets.provision({}, directory)
+            self.assertFalse((directory / "outside").exists())
+
     def test_symlinked_directory_and_files_are_rejected(self):
         with tempfile.TemporaryDirectory() as root:
             root = Path(root)

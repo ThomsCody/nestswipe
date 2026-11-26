@@ -11,7 +11,7 @@ from curl_cffi import CurlFollow
 from curl_cffi.requests import AsyncSession
 
 from app.config import settings
-from app.services import listing_metrics
+from app.services import listing_metrics, web_data_scraper
 from app.services.listing_contact import extract_contact, normalize_phone
 
 logger = logging.getLogger(__name__)
@@ -659,7 +659,13 @@ async def scrape_listing(
     metric_source = listing_metrics.access_source(source, tracking_url)
     listing_metrics.scrape_attempt(metric_source, purpose)
     try:
-        result = await _scrape_listing(tracking_url, source)
+        result = None
+        if source == "seloger" and purpose != "probe":
+            result = await web_data_scraper.cached_listing(tracking_url)
+        if result is None:
+            result = await _scrape_listing(
+                tracking_url, source, allow_paid=purpose != "probe"
+            )
     except Exception:
         listing_metrics.scrape_outcome(metric_source, purpose, "failure")
         raise
@@ -674,7 +680,9 @@ async def scrape_listing(
     return result
 
 
-async def _scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
+async def _scrape_listing(
+    tracking_url: str, source: str, *, allow_paid: bool = True
+) -> ScrapedListing:
     """
     Fetch a listing URL using curl-impersonate (Chrome TLS fingerprint),
     follow redirects, capture the final permanent URL and scrape photos.
@@ -801,9 +809,28 @@ async def _scrape_listing(tracking_url: str, source: str) -> ScrapedListing:
             or http_status == 200
         )
     ):
+        if source == "seloger" and allow_paid:
+            cached = await web_data_scraper.cached_listing(
+                result.resolved_url or tracking_url
+            )
+            if cached:
+                return cached
         recovered = await _scrape_browser(result.resolved_url or tracking_url, source)
         if recovered:
             return recovered
+        if (
+            source == "seloger"
+            and allow_paid
+            and (
+                failure_reason == "anti_bot_challenge"
+                or http_status in THROTTLE_STATUS_CODES
+            )
+        ):
+            recovered = await web_data_scraper.recover_listing(
+                result.resolved_url or tracking_url, cache_url=tracking_url
+            )
+            if recovered:
+                return recovered
 
     # Belles Demeures resolves its displayed phone only after a browser action,
     # even when the initial HTML fetch succeeds. Keep the usable scrape if the

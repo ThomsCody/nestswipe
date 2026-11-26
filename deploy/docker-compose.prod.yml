@@ -103,6 +103,8 @@ services:
       EMAIL_POLL_INTERVAL_MINUTES: ${EMAIL_POLL_INTERVAL_MINUTES:-5}
       LISTING_PROBES_ENABLED: "false"
       DECODO_API_KEY_FILE: /run/secrets/decodo_api_key
+      DECODO_WEB_DATA_API_KEY_FILE: /run/secrets/decodo_web_data_api_key
+      DECODO_WEB_DATA_CACHE_TTL_SECONDS: ${DECODO_WEB_DATA_CACHE_TTL_SECONDS:-86400}
       PROXY_HOST: ${PROXY_HOST:-}
       PROXY_USER_FILE: /run/secrets/proxy_user
       PROXY_PASSWORD_FILE: /run/secrets/proxy_password
@@ -131,12 +133,14 @@ services:
     volumes:
       - ./oauth.json:/app/oauth.json:ro
       - /var/run/datadog:/var/run/datadog:ro
+      - web_data_state:/var/lib/nestswipe/web-data
     secrets:
       - database_url
       - garage_access_key
       - garage_secret_key
       - jwt_secret
       - decodo_api_key
+      - decodo_web_data_api_key
       - proxy_user
       - proxy_password
       - sendgrid_api_key
@@ -185,6 +189,8 @@ secrets:
     file: ${NESTSWIPE_SECRETS_DIR:-./secrets}/jwt_secret
   decodo_api_key:
     file: ${NESTSWIPE_SECRETS_DIR:-./secrets}/decodo_api_key
+  decodo_web_data_api_key:
+    file: ${NESTSWIPE_SECRETS_DIR:-./secrets}/decodo_web_data_api_key
   proxy_user:
     file: ${NESTSWIPE_SECRETS_DIR:-./secrets}/proxy_user
   proxy_password:
@@ -193,6 +199,7 @@ secrets:
     file: ${NESTSWIPE_SECRETS_DIR:-./secrets}/sendgrid_api_key
 
 volumes:
+  web_data_state:
   garage_data:
   garage_meta:
   seloger_browser_profile:
